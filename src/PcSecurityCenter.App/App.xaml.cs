@@ -161,6 +161,7 @@ public partial class App : Application
         services.AddSingleton<IRealtimeProtector, WindowsRealtimeProtector>();
         services.AddSingleton<IDialogService, DialogService>();
         services.AddSingleton<NavigationService>();
+        services.AddSingleton<UpdaterService>();
 
         // ViewModel
         services.AddSingleton<DashboardViewModel>();
@@ -175,6 +176,7 @@ public partial class App : Application
         services.AddSingleton<FileAnalysisViewModel>();
         services.AddSingleton<ReportCenterViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<UpdateViewModel>();
 
         return services.BuildServiceProvider();
     }

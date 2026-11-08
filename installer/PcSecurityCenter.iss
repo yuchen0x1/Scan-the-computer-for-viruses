@@ -18,7 +18,7 @@ DefaultGroupName={#AppName}
 UninstallDisplayName={#AppName} {#AppVersion}
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir=..\publish\installer
-OutputBaseFilename=Windows智能安全卫士-Setup-{#AppVersion}
+OutputBaseFilename=PcSecurityCenter-Setup-{#AppVersion}
 SetupIconFile=..\src\PcSecurityCenter.App\Assets\app.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -57,7 +57,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "立即启动 {#AppName}"; Flags: nowait postinstall skipifsilent
+; 安装完成后启动应用。注意：不要加 skipifsilent —— 静默更新（自动更新）时也必须据此自动重启新版本。
+Filename: "{app}\{#AppExe}"; Description: "立即启动 {#AppName}"; Flags: nowait postinstall
 
 [UninstallDelete]
 ; 仅删除程序目录内容；用户数据目录 %APPDATA%\PcSecurityCenter 保留（隔离文件与报告不丢失）

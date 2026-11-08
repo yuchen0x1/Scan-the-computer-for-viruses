@@ -54,6 +54,7 @@ public enum PageKind
     FileAnalysis,   // 文件分析
     Reports,        // 安全报告
     Settings,       // 设置中心
+    Update,         // 更新中心
 }
 
 /// <summary>页面激活感知：实现该接口的 ViewModel 会在导航进入/离开时收到通知，
@@ -90,6 +91,7 @@ public class NavigationService
             PageKind.FileAnalysis => new FileAnalysisPage(_sp.GetRequiredService<FileAnalysisViewModel>()),
             PageKind.Reports => new ReportCenterPage(_sp.GetRequiredService<ReportCenterViewModel>()),
             PageKind.Settings => new SettingsPage(_sp.GetRequiredService<SettingsViewModel>()),
+            PageKind.Update => new UpdatePage(_sp.GetRequiredService<UpdateViewModel>()),
             _ => throw new ArgumentOutOfRangeException(nameof(kind)),
         };
     }

@@ -1,0 +1,92 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.UpdatePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:PcSecurityCenter.App.ViewModels">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="更新中心" Style="{StaticResource PageTitle}" />
+            <TextBlock Style="{StaticResource PageSubTitle}"
+                       Text="检测更新与更新日志同一入口 · 每次启动自动检查，发现新版本自动下载并提示升级" />
+
+            <!-- ===== 检测更新 ===== -->
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="检测更新" FontWeight="Bold" FontSize="14" Margin="0,0,0,10" />
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource StatusPill}" Background="{DynamicResource BrushAccentMedium}">
+                            <TextBlock FontSize="12" Foreground="{DynamicResource BrushAccent}" FontWeight="SemiBold">
+                                <Run Text="当前版本：" /><Run Text="{Binding CurrentVersionText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource StatusPill}">
+                            <TextBlock FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}">
+                                <Run Text="上次检查：" /><Run Text="{Binding LastCheckedText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+
+                    <TextBlock Text="{Binding StatusText, Mode=OneWay}" FontSize="12.5"
+                               Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap"
+                               Margin="0,0,0,10" MinHeight="18" />
+
+                    <ProgressBar Height="6" Minimum="0" Maximum="100" Value="{Binding DownloadProgress, Mode=OneWay}"
+                                 Foreground="{DynamicResource BrushAccent}" Background="{DynamicResource BrushBorder}"
+                                 Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVis}, Mode=OneWay}"
+                                 Margin="0,0,0,10" />
+
+                    <WrapPanel>
+                        <Button Content="检查更新" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                                Command="{Binding CheckCommand}" IsEnabled="{Binding CanCheck}" />
+                        <Button Content="下载更新" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                                Command="{Binding DownloadCommand}" Visibility="{Binding CanDownload, Converter={StaticResource BoolToVis}, Mode=OneWay}" />
+                        <Button Content="立即更新（重启）" Style="{StaticResource DangerButton}" Margin="0,0,8,0"
+                                Command="{Binding ApplyCommand}" Visibility="{Binding CanApply, Converter={StaticResource BoolToVis}, Mode=OneWay}" />
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 更新日志 ===== -->
+            <Border Style="{StaticResource SectionCard}" Margin="0,12,0,0">
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="更新日志" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" />
+                        <Button Grid.Column="2" HorizontalAlignment="Right" Content="刷新"
+                                Style="{StaticResource SmallGhostButton}" Command="{Binding RefreshChangelogCommand}" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Changelog, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ChangelogEntry}">
+                                <Border Style="{StaticResource InnerCard}" Margin="0,0,0,10" Padding="14">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <TextBlock Text="{Binding Version, Mode=OneWay}" FontSize="13.5" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding DateText, Mode=OneWay}" FontSize="11"
+                                                       Foreground="{DynamicResource BrushTextMuted}" Margin="10,2,0,0" />
+                                            <Border Style="{StaticResource StatusPill}" Margin="10,0,0,0"
+                                                    Background="{DynamicResource BrushStatusPillBg}"
+                                                    Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}, Mode=OneWay}">
+                                                <TextBlock FontSize="10" Foreground="{DynamicResource BrushOk}" FontWeight="SemiBold">当前版本</TextBlock>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Notes, Mode=OneWay}" FontSize="11.5"
+                                                   Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}" Margin="0,4,0,0"
+                               Text="在线时更新日志来自官方发布页；离线时展示随安装包分发的本地记录。" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -25,6 +25,7 @@
 | 高级工具 | 系统信息、环境变量、电源模式、服务、适配器、隐私设置快捷入口（全部只读） | WMI/命令行只读 |
 | 文件分析 | SHA256/SHA1/MD5、PE 头解析、数字签名验证、熵分析、EICAR 引擎自检；**全部本地完成，不上传任何内容** | 本地实现 + WinVerifyTrust |
 | 安全报告 | 检查/扫描/威胁/维护/事件汇总，HTML 与 PDF 导出，如实标注覆盖范围与限制 | SQLite 聚合 |
+| 更新中心 | 检测更新与更新日志同一入口；每次启动自动检查 GitHub Releases 新版本，发现后自动下载并提示重启升级 | GitHub Releases（在线）/ 本地 更新日志.md（离线） |
 
 ## 安全与权限体系（最高优先级）
 
@@ -67,6 +68,33 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 
 - 数据目录：`%APPDATA%\PcSecurityCenter\`（数据库 security.db、日志 logs\、报告 reports\、隔离库 Quarantine\）
 - 卸载不会删除用户数据目录（可手动清理）。
+
+## 安装、更新与发布
+
+### 安装包
+- 标准 Windows 安装程序（`Windows智能安全卫士-Setup-1.0.0.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`Windows智能安全卫士-1.0.0-portable.zip`，解压即用。
+- 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
+
+### 内置自动更新（更新中心）
+- 左侧导航「更新中心」将**检测更新**与**更新日志**整合在同一页面：在线时更新日志直接来自官方发布页，离线时回退到随安装包分发的本地记录。
+- **每次启动自动检测** GitHub Releases 上的新版本；发现新版本后**自动下载安装包**，下载完成后界面顶部浮现更新横幅（含 60 秒倒计时），点击「立即更新」或倒计时结束即**静默运行安装程序并重启应用**以完成升级；也可选择「稍后」本次不更新。
+- 所有网络操作带超时与异常保护，更新检测失败不会影响正常启动与使用。
+- 更新通道的首个可用版本即本次发布的 `v1.0.0`，后续版本可由自动更新直接从官方发布页拉取，用户始终使用最新版本。
+
+### 发布构建
+```bash
+# 1) 自包含发布
+dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
+# 2) 便携版 zip
+Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/Windows智能安全卫士-1.0.0-portable.zip
+# 3) 安装包（需 Inno Setup 6）
+iscc installer/PcSecurityCenter.iss
+# 4) 创建 GitHub Release 并上传安装包与便携版
+gh release create v1.0.0 -t "Windows 智能安全卫士 v1.0.0" --notes-file installer/更新日志.md publish/installer/Windows智能安全卫士-Setup-1.0.0.exe publish/Windows智能安全卫士-1.0.0-portable.zip
+```
+
+或使用一键脚本：`pwsh publish.ps1`（会自动构建、测试、发布、打包并生成安装包）。
 
 ## 许可
 

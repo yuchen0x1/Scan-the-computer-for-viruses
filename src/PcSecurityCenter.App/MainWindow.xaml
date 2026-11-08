@@ -180,6 +180,12 @@
                                 <TextBlock Text="设置中心" />
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="NavUpdate" Style="{StaticResource NavButton}" GroupName="Nav" Checked="Nav_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⟳" Margin="0,0,10,0" FontSize="12" />
+                                <TextBlock Text="更新中心" />
+                            </StackPanel>
+                        </RadioButton>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -188,6 +194,33 @@
             <Grid Grid.Column="1">
                 <ContentControl x:Name="ContentHost" Margin="18,14,18,6" />
             </Grid>
+
+            <!-- 更新横幅：检测到并下载好新版本后浮现；倒计时结束自动重启更新，可「稍后」延后 -->
+            <Border x:Name="UpdateBanner" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                    Margin="18,14,18,0" Panel.ZIndex="90" Visibility="Collapsed"
+                    Style="{StaticResource SectionCard}" BorderBrush="{DynamicResource BrushAccent}" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Path Data="M12,2 A10,10 0 1,0 12,22 A10,10 0 0,0 12,2 M12,7 V12 L16,14"
+                          Stroke="{DynamicResource BrushAccent}" StrokeThickness="1.8" Fill="Transparent"
+                          Stretch="Uniform" Width="22" Height="22" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="UpdateBannerTitle" FontWeight="Bold" FontSize="13" />
+                        <TextBlock x:Name="UpdateBannerSub" FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}"
+                                   TextWrapping="Wrap" Margin="0,2,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="UpdateNowButton" Content="立即更新" Style="{StaticResource PrimaryButton}"
+                                Margin="0,0,8,0" Click="UpdateNowButton_Click" />
+                        <Button x:Name="UpdateLaterButton" Content="稍后" Style="{StaticResource GhostButton}"
+                                Click="UpdateLaterButton_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ===== 底栏 ===== -->

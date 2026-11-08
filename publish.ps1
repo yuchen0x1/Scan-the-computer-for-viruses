@@ -16,7 +16,7 @@ dotnet publish src/PcSecurityCenter.App/PcSecurityCenter.App.csproj -c Release -
 if ($LASTEXITCODE -ne 0) { throw "publish failed" }
 
 Write-Host "== 3. 便携版 zip ==" -ForegroundColor Cyan
-$zip = "publish/Windows智能安全卫士-1.0.0-portable.zip"
+$zip = "publish/PcSecurityCenter-Portable-1.0.0.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path "publish/selfcontained/*" -DestinationPath $zip -CompressionLevel Optimal
 # 附带文档
