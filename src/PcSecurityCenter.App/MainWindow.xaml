@@ -226,7 +226,7 @@
         <!-- ===== 底栏 ===== -->
         <Border Grid.Row="2" Background="{DynamicResource BrushOverlay}" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
             <DockPanel LastChildFill="False">
-                <TextBlock x:Name="VersionText" Text="v1.0.0" FontSize="11" Foreground="{DynamicResource BrushTextMuted}"
+                <TextBlock x:Name="VersionText" Text="v1.1.0" FontSize="11" Foreground="{DynamicResource BrushTextMuted}"
                            VerticalAlignment="Center" Margin="16,0" />
                 <TextBlock Text="|" FontSize="11" Foreground="{DynamicResource BrushDivider}" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding EngineStatusText}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}"

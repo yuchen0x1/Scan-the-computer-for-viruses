@@ -9,9 +9,9 @@ namespace PcSecurityCenter.Core.FileAnalysis;
 /// </summary>
 public class FileAnalyzer
 {
-    private readonly Func<string, (bool? signed, string? subject, string? status)>? _signatureProbe;
+    private readonly Func<string, Task<(bool? signed, string? subject, string? status)>>? _signatureProbe;
 
-    public FileAnalyzer(Func<string, (bool? signed, string? subject, string? status)>? signatureProbe = null)
+    public FileAnalyzer(Func<string, Task<(bool? signed, string? subject, string? status)>>? signatureProbe = null)
     {
         _signatureProbe = signatureProbe;
     }
@@ -43,7 +43,8 @@ public class FileAnalyzer
         if (pe.IsPe)
         {
             report.PeMachine = pe.Is64Bit ? $"{pe.Machine} (64 位)" : pe.Machine;
-            var sig = _signatureProbe?.Invoke(full);
+            (bool? signed, string? subject, string? status)? sig =
+                _signatureProbe is null ? null : await _signatureProbe(full).ConfigureAwait(false);
             report.PeIsSigned = sig?.signed;
             report.SignatureSubject = sig?.subject;
             report.SignatureStatus = sig?.status;

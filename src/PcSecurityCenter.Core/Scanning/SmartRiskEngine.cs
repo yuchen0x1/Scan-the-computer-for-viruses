@@ -122,7 +122,7 @@ public class SmartRiskEngine : IScanEngine
         if (dot <= 0) return false;
         var second = fileName.LastIndexOf('.', dot - 1);
         if (second < 0) return false;
-        var inner = fileName.Substring(second + 1, dot - second - 1);
+        var inner = fileName.Substring(second + 1, dot - second - 1).ToLowerInvariant();
         return inner is "pdf" or "doc" or "docx" or "jpg" or "png" or "txt" or "xls" or "xlsx";
     }
 
@@ -132,7 +132,7 @@ public class SmartRiskEngine : IScanEngine
         var hits = new List<string>();
         try
         {
-            if (new FileInfo(file).Length > 2 * 1024 * 1024) return hits; // 超大脚本只读前段
+            // 只读文件前段（256K 字符上限），超大脚本同样检查，不做整体跳过
             string content;
             using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var sr = new StreamReader(fs, System.Text.Encoding.UTF8, true))

@@ -338,3 +338,59 @@ public class HtmlReportBuilderTests
         Assert.DoesNotContain("TEST<PC>", html);
     }
 }
+
+/// <summary>评分边界与风险引擎大小写（v1.1.0 加固回归）。</summary>
+public class ScoreAndRiskEdgeTests
+{
+    private static SecurityCheckItem Item(string id, CheckStatus status, int weight, string cat = "X") => new()
+    {
+        Id = id, Name = id, Category = cat, Status = status, Result = "", Method = "test", Weight = weight,
+    };
+
+    [Fact]
+    public void FromChecks_全部不可读_标注未知而非危险()
+    {
+        var calc = new ScoreCalculator();
+        var s = calc.FromChecks(new[]
+        {
+            Item("a", CheckStatus.NoPermission, 5),
+            Item("b", CheckStatus.NotSupported, 3),
+            Item("c", CheckStatus.Error, 2),
+        });
+        Assert.Equal("未知", s.Grade);
+    }
+
+    [Fact]
+    public void FromChecks_不可读项不计入分母()
+    {
+        var calc = new ScoreCalculator();
+        var s = calc.FromChecks(new[]
+        {
+            Item("ok", CheckStatus.Ok, 3),
+            Item("no", CheckStatus.NoPermission, 100),
+        });
+        Assert.Equal(100, s.Total);
+    }
+
+    [Theory]
+    [InlineData("invoice.pdf.exe")]
+    [InlineData("invoice.PDF.exe")]
+    [InlineData("INVOICE.PdF.ExE")]
+    public async Task Engine_双扩展名_大小写不敏感(string fileName)
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "psc_case_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(temp);
+        var fake = Path.Combine(temp, fileName);
+        await File.WriteAllBytesAsync(fake, new byte[] { 0x4D, 0x5A, 0x90, 0x00 });
+        try
+        {
+            var engine = new SmartRiskEngine();
+            var ctx = new ScanContext { Type = ScanType.Quick, ScanRunId = Guid.NewGuid(), RootPaths = new[] { temp } };
+            var found = new List<ThreatInfo>();
+            await foreach (var t in engine.ScanFilesAsync(new[] { fake }, ctx, CancellationToken.None))
+                found.Add(t);
+            Assert.Contains(found, t => t.Name.Contains("双扩展名"));
+        }
+        finally { Directory.Delete(temp, true); }
+    }
+}

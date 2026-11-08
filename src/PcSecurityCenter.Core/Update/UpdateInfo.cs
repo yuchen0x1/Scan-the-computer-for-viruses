@@ -10,6 +10,18 @@ public sealed class ReleaseAsset
     public string DownloadUrl { get; set; } = "";
     public long Size { get; set; }
     public string ContentType { get; set; } = "";
+
+    /// <summary>返回可安全落盘的文件名（仅取末段、剔除非法字符）；名称无法安全落盘时返回 null。</summary>
+    public string? SafeFileName()
+    {
+        var name = Name.Replace('/', '\\');
+        var last = name.LastIndexOf('\\');
+        if (last >= 0) name = name[(last + 1)..];
+        name = name.Trim();
+        if (name.Length == 0 || name is "." or "..") return null;
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return null;
+        return name;
+    }
 }
 
 /// <summary>一次发布的版本信息（来自 GitHub Releases API）。</summary>
@@ -31,6 +43,38 @@ public sealed class ReleaseInfo
         Assets.FirstOrDefault(a => a.Name.Contains("Setup", StringComparison.OrdinalIgnoreCase)
                                    && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         ?? Assets.FirstOrDefault(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>挑选随发布附带的 SHA256 校验和文件（名称含 "sha256"），无则返回 null。</summary>
+    public ReleaseAsset? ChecksumsAsset =>
+        Assets.FirstOrDefault(a => a.Name.Contains("sha256", StringComparison.OrdinalIgnoreCase)
+                                   && (a.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
+                                       || a.Name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)
+                                       || a.Name.Equals("SHA256SUMS", StringComparison.OrdinalIgnoreCase)));
+}
+
+/// <summary>SHA256SUMS 类校验和文件的解析（"hex 文件名" 每行一条，兼容 '*' 前缀的二进制标记）。</summary>
+public static class ChecksumFile
+{
+    /// <summary>解析校验和文件内容，返回 文件名 → 小写十六进制哈希 的映射；格式非法的行跳过。</summary>
+    public static Dictionary<string, string> Parse(string text)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rawLine in text.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r').Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) continue;
+            var hash = parts[0].Trim();
+            if (hash.Length != 64 || hash.Any(c => !Uri.IsHexDigit(c))) continue;
+            var file = parts[1].TrimStart('*').Replace('/', '\\');
+            var last = file.LastIndexOf('\\');
+            if (last >= 0) file = file[(last + 1)..];
+            if (file.Length == 0) continue;
+            map[file] = hash.ToLowerInvariant();
+        }
+        return map;
+    }
 }
 
 /// <summary>版本号解析与比较工具（与 GitHub tag 形如 "v1.2.3" / "1.2.3" / "v1.2.3-beta" 兼容）。</summary>

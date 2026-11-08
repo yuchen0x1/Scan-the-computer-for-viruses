@@ -1,5 +1,8 @@
 # Scan the computer for viruses
 
+[![CI](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/actions/workflows/ci.yml/badge.svg)](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > Windows 智能安全卫士 (PC Security Center)
 
 一款集**病毒查杀、实时防护、系统安全检查、网络安全监控、性能分析、系统维护、文件分析、安全报告**于一体的 Windows 桌面安全管理平台。
@@ -14,7 +17,7 @@
 |---|---|---|
 | 安全驾驶舱 | 综合安全评分（规则公开透明）、防护状态卡、CPU/GPU/内存/磁盘/网速实时卡片、最近安全事件、一键体检 | 真实检查项 + PerformanceCounter/WMI |
 | 病毒查杀 | 快速/全盘/自定义三种扫描；暂停/继续/取消；进度/速度/文件数 | Microsoft Defender 官方引擎（PowerShell cmdlet + MpCmdRun）+ SmartRisk 智能风险规则引擎 |
-| 威胁处理 | 隔离（优先）/删除/忽略/详情；AES-256 加密隔离区，SHA256 双重完整性校验，防篡改逃逸 | Defender 官方接口（Remove-MpThreat）+ 本地隔离库 |
+| 威胁处理 | 隔离（优先）/删除/忽略/详情；AES-256-CBC 加密 + HMAC-SHA256 认证（encrypt-then-MAC）隔离区，主密钥 DPAPI 保护，密文被篡改即拒绝恢复 | Defender 官方接口（Remove-MpThreat）+ 本地隔离库 |
 | 实时防护 | 启动文件夹监控（FileSystemWatcher 事件驱动）、Run 键变化、临时目录新进程、Defender 状态变化；低频轮询资源占用可控 | Windows API + 可配置轮询间隔 |
 | 网络安全 | TCP 连接（进程关联/签名检查）、可疑连接提示（标注依据，不自动封禁）、防火墙配置、代理/Hosts/DNS 检查、实时流量 | GetExtendedTcpTable / Get-NetFirewallProfile / 注册表只读 |
 | 系统安全 | Defender/防火墙/Windows Update/UAC/Secure Boot/TPM/BitLocker/安全中心/账户/RDP/补丁/SMBv1 等 15+ 项检查 | PowerShell/WMI/注册表只读；**无法读取的项如实标注「权限不足/暂不支持」，绝不默认显示安全** |
@@ -32,7 +35,8 @@
 - 默认最小权限运行（manifest 为 asInvoker）；只有必要操作（SFC/DISM/chkdsk/还原点/计划任务/服务启停）经用户确认后触发 UAC，提权脚本走**白名单模板 + 环境变量传参**，杜绝命令注入。
 - 危险操作（隔离/删除/清理/禁用启动项）全部二次确认 + 日志记录。
 - 不会静默关闭 Defender/防火墙，不会上传任何文件内容或隐私数据，扫描结果可追溯（引擎、依据、时间、哈希全记录）。
-- 隔离区：AES-256 加密 + 密文哈希与原文件哈希双重校验，被篡改的隔离数据**拒绝恢复**。
+- 隔离区：AES-256-CBC 加密 + HMAC-SHA256 认证（encrypt-then-MAC），主密钥经 DPAPI（CurrentUser）保护存盘；密文被篡改的隔离数据**拒绝恢复**。
+- 自动更新：安装包仅从 GitHub 官方主机下载，落盘前做文件名净化、字节数核对、SHA256 与发布附带 SHA256SUMS 比对、Authenticode 签名与吊销状态验证，安装前再次比对哈希防替换。
 
 ## 评分规则（公开透明）
 
@@ -50,7 +54,7 @@
 ```bash
 # 需要 .NET 10 SDK（本机安装于 C:\Users\lenmo\dotnet-setup\sdk10）
 dotnet build PcSecurityCenter.slnx
-dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release     # 46 个单元/集成/安全测试
+dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release     # 81 个单元/集成/安全测试
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 安装包：installer/PcSecurityCenter.iss（Inno Setup 6）
 ```
@@ -72,30 +76,34 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 ## 安装、更新与发布
 
 ### 安装包
-- 标准 Windows 安装程序（`Windows智能安全卫士-Setup-1.0.0.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
-- 免安装便携版：`Windows智能安全卫士-1.0.0-portable.zip`，解压即用。
+- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.1.0.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`PcSecurityCenter-Portable-1.1.0.zip`，解压即用。
 - 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
+- 每个 Release 附带 `SHA256SUMS.txt`，可自行校验下载产物完整性。
 
 ### 内置自动更新（更新中心）
 - 左侧导航「更新中心」将**检测更新**与**更新日志**整合在同一页面：在线时更新日志直接来自官方发布页，离线时回退到随安装包分发的本地记录。
 - **每次启动自动检测** GitHub Releases 上的新版本；发现新版本后**自动下载安装包**，下载完成后界面顶部浮现更新横幅（含 60 秒倒计时），点击「立即更新」或倒计时结束即**静默运行安装程序并重启应用**以完成升级；也可选择「稍后」本次不更新。
 - 所有网络操作带超时与异常保护，更新检测失败不会影响正常启动与使用。
-- 更新通道的首个可用版本即本次发布的 `v1.0.0`，后续版本可由自动更新直接从官方发布页拉取，用户始终使用最新版本。
+- 更新包下载后必须通过完整性校验（SHA256 + 签名/吊销验证）才会执行，校验不过拒绝安装。
+- 更新通道自 `v1.1.0` 起持续维护，后续版本可由自动更新直接从官方发布页拉取，用户始终使用最新版本。
 
 ### 发布构建
 ```bash
+# 一键发布（推荐）：自动构建、测试、发布、打包、生成安装包与 SHA256SUMS
+pwsh publish.ps1
+# 或手动：
 # 1) 自包含发布
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 2) 便携版 zip
-Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/Windows智能安全卫士-1.0.0-portable.zip
+Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.1.0.zip
 # 3) 安装包（需 Inno Setup 6）
-iscc installer/PcSecurityCenter.iss
-# 4) 创建 GitHub Release 并上传安装包与便携版
-gh release create v1.0.0 -t "Windows 智能安全卫士 v1.0.0" --notes-file installer/更新日志.md publish/installer/Windows智能安全卫士-Setup-1.0.0.exe publish/Windows智能安全卫士-1.0.0-portable.zip
+iscc /DAppVersion=1.1.0 installer/PcSecurityCenter.iss
+# 4) 创建 GitHub Release 并上传安装包、便携版与 SHA256SUMS
+gh release create v1.1.0 -t "Windows 智能安全卫士 v1.1.0" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.1.0.exe publish/PcSecurityCenter-Portable-1.1.0.zip publish/SHA256SUMS.txt
 ```
 
-或使用一键脚本：`pwsh publish.ps1`（会自动构建、测试、发布、打包并生成安装包）。
 
 ## 许可
 
-见 [LICENSES.md](installer/LICENSES.md)。第三方组件：.NET/MIT、CommunityToolkit.Mvvm/MIT、Serilog/Apache-2.0、LiveCharts2/MIT、QuestPDF 社区许可、SQLite Public Domain、Inno Setup（安装包制作工具，Inno Setup License）。
+本项目以 [MIT](LICENSE) 协议开源。第三方组件：.NET/MIT、CommunityToolkit.Mvvm/MIT、Serilog/Apache-2.0、LiveCharts2/MIT、QuestPDF 社区许可、SQLite Public Domain、Inno Setup（安装包制作工具，Inno Setup License）。免责声明与能力边界另见 [LicenseText.md](installer/LicenseText.md)。

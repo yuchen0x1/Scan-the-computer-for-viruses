@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using PcSecurityCenter.Core.Update;
+using PcSecurityCenter.Platform.Security;
 
 namespace PcSecurityCenter.App.Services;
 
@@ -37,6 +39,8 @@ public sealed class UpdaterService
     private const string ApiReleases = "https://api.github.com/repos/yuchen0x1/Scan-the-computer-for-viruses/releases?per_page=10";
 
     private readonly HttpClient _http;
+    // 下载走独立 HttpClient：大文件流式读取由下方分阶段超时控制，不能被 20s 全局超时掐断。
+    private readonly HttpClient _downloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly string _downloadDir;
 
     public Version CurrentVersion { get; }
@@ -57,6 +61,8 @@ public sealed class UpdaterService
     public string? LastError { get; private set; }
     public DateTime? LastChecked { get; private set; }
     public string? DownloadedPath { get; private set; }
+    /// <summary>下载完成并通过校验的安装包 SHA256（应用前会再次比对防替换）。</summary>
+    public string? VerifiedSha256 { get; private set; }
     public int DownloadProgressPercent { get; private set; }
 
     public event EventHandler? StateChanged;
@@ -128,12 +134,27 @@ public sealed class UpdaterService
         }
     }
 
-    /// <summary>下载安装包到临时目录。完成后状态变为 Ready。</summary>
-    public async Task DownloadAsync()
+    /// <summary>下载安装包到临时目录，并做完整性校验：文件名净化、下载源限定 GitHub 官方主机、
+    /// 字节数核对、SHA256 与发布附带校验和比对、Authenticode 签名策略。全部通过后状态变为 Ready。</summary>
+    public async Task DownloadAsync(CancellationToken cancellationToken = default)
     {
         if (LatestRelease?.SetupAsset is not { } asset)
         {
             LastError = "未找到可用的安装包资源";
+            State = UpdateState.Error;
+            return;
+        }
+
+        if (asset.SafeFileName() is not { } fileName)
+        {
+            LastError = "安装包资源文件名非法";
+            State = UpdateState.Error;
+            return;
+        }
+
+        if (!IsTrustedDownloadHost(asset.DownloadUrl))
+        {
+            LastError = "安装包下载地址不在可信主机上";
             State = UpdateState.Error;
             return;
         }
@@ -144,28 +165,53 @@ public sealed class UpdaterService
         try
         {
             Directory.CreateDirectory(_downloadDir);
-            var dest = Path.Combine(_downloadDir, asset.Name);
-            using var resp = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead);
-            resp.EnsureSuccessStatusCode();
-            var total = resp.Content.Headers.ContentLength ?? asset.Size;
+            var dest = Path.Combine(_downloadDir, fileName);
+            var part = dest + ".part";
 
-            await using var src = await resp.Content.ReadAsStreamAsync();
-            await using var fs = File.Create(dest);
-            var buffer = new byte[81920];
-            long read = 0;
-            int n;
-            while ((n = await src.ReadAsync(buffer)) > 0)
+            long read;
+            string sha256;
+            using (var headCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                await fs.WriteAsync(buffer.AsMemory(0, n));
-                read += n;
-                if (total > 0)
+                // 分阶段超时：连接+响应头 30s，之后流式读取每 60s 必须有进展，避免大文件被整体超时掐断。
+                headCts.CancelAfter(TimeSpan.FromSeconds(30));
+                using var resp = await _downloadHttp.GetAsync(
+                    asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, headCts.Token);
+                resp.EnsureSuccessStatusCode();
+                var total = resp.Content.Headers.ContentLength ?? asset.Size;
+
+                await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
+                await using var fs = File.Create(part);
+                using var hasher = SHA256.Create();
+                var buffer = new byte[81920];
+                read = 0;
+                int n;
+                using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                while (true)
                 {
-                    DownloadProgressPercent = (int)(read * 100 / total);
-                    DownloadProgressChanged?.Invoke(this, DownloadProgressPercent);
+                    idleCts.CancelAfter(TimeSpan.FromSeconds(60));
+                    n = await src.ReadAsync(buffer, idleCts.Token);
+                    if (n <= 0) break;
+                    await fs.WriteAsync(buffer.AsMemory(0, n), cancellationToken);
+                    hasher.TransformBlock(buffer, 0, n, null, 0);
+                    read += n;
+                    if (total > 0)
+                    {
+                        DownloadProgressPercent = (int)(read * 100 / total);
+                        DownloadProgressChanged?.Invoke(this, DownloadProgressPercent);
+                    }
                 }
+                hasher.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                sha256 = Convert.ToHexString(hasher.Hash!).ToLowerInvariant();
             }
 
+            if (asset.Size > 0 && read != asset.Size)
+                throw new InvalidDataException($"下载不完整：期望 {asset.Size} 字节，实际 {read} 字节");
+
+            await VerifyDownloadedPackageAsync(fileName, part, sha256, cancellationToken);
+
+            File.Move(part, dest, overwrite: true);
             DownloadedPath = dest;
+            VerifiedSha256 = sha256;
             State = UpdateState.Ready;
         }
         catch (Exception ex)
@@ -176,7 +222,44 @@ public sealed class UpdaterService
         }
     }
 
-    /// <summary>运行已下载的安装包（静默模式）并退出当前进程，由安装程序替换文件后重启新版本。</summary>
+    /// <summary>
+    /// 校验已下载的安装包：发布附带 SHA256SUMS 时哈希必须匹配；
+    /// 有 Authenticode 签名时必须验证通过；既无签名又无校验和则拒绝安装。
+    /// </summary>
+    private async Task VerifyDownloadedPackageAsync(
+        string fileName, string filePath, string sha256, CancellationToken cancellationToken)
+    {
+        var hasChecksum = false;
+        if (LatestRelease?.ChecksumsAsset is { } sums)
+        {
+            if (!IsTrustedDownloadHost(sums.DownloadUrl))
+                throw new InvalidDataException("校验和文件下载地址不在可信主机上");
+            using var headCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            headCts.CancelAfter(TimeSpan.FromSeconds(30));
+            var text = await _downloadHttp.GetStringAsync(sums.DownloadUrl, headCts.Token);
+            var map = ChecksumFile.Parse(text);
+            if (!map.TryGetValue(fileName, out var expected))
+                throw new InvalidDataException("校验和文件中没有该安装包的记录");
+            if (!string.Equals(expected, sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("SHA256 校验失败，安装包可能已损坏或被篡改");
+            hasChecksum = true;
+        }
+
+        var sig = SignatureVerifier.Verify(filePath, checkRevocation: true);
+        if (sig.IsSigned && !sig.IsValid)
+            throw new InvalidDataException("安装包数字签名验证失败：" + sig.StatusText);
+        if (!sig.IsSigned && !hasChecksum)
+            throw new InvalidDataException("安装包既无有效数字签名也无校验和，拒绝安装");
+    }
+
+    private static bool IsTrustedDownloadHost(string url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var u)
+           && u.Scheme == Uri.UriSchemeHttps
+           && (u.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+               || u.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>运行已下载的安装包（静默模式）并退出当前进程，由安装程序替换文件后重启新版本。
+    /// 运行前重新比对 SHA256，防止校验后被替换。</summary>
     public void ApplyAndRestart()
     {
         if (DownloadedPath is null || !File.Exists(DownloadedPath))
@@ -189,6 +272,18 @@ public sealed class UpdaterService
         try
         {
             State = UpdateState.Applying;
+            if (VerifiedSha256 is { } expected)
+            {
+                using var fs = File.OpenRead(DownloadedPath);
+                var actual = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+                if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                {
+                    LastError = "安装包在校验后被修改，已中止更新";
+                    State = UpdateState.Error;
+                    return;
+                }
+            }
+
             var psi = new ProcessStartInfo
             {
                 FileName = DownloadedPath,

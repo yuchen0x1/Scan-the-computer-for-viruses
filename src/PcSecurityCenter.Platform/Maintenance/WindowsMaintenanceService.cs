@@ -18,7 +18,7 @@ public class WindowsMaintenanceService : IMaintenanceService
     public WindowsMaintenanceService(IPermissionService permission) => _permission = permission;
 
     // ---------------- 可清理项扫描 ----------------
-    public Task<List<MaintenanceCleanItem>> ScanCleanableAsync(CancellationToken ct = default) => Task.Run(() =>
+    public Task<List<MaintenanceCleanItem>> ScanCleanableAsync(CancellationToken ct = default) => Task.Run(async () =>
     {
         var items = new List<MaintenanceCleanItem>();
 
@@ -71,13 +71,13 @@ public class WindowsMaintenanceService : IMaintenanceService
             @"C:\Windows\SoftwareDistribution\Download", recursive: true, requiresAdmin: true, olderThanDays: 14);
 
         // 回收站（通过 Shell 读取大小）
-        var rb = ScanRecycleBin(ct);
+        var rb = await ScanRecycleBinAsync(ct).ConfigureAwait(false);
         if (rb != null) items.Add(rb);
 
         return items;
     }, ct);
 
-    private MaintenanceCleanItem? ScanRecycleBin(CancellationToken ct)
+    private async Task<MaintenanceCleanItem?> ScanRecycleBinAsync(CancellationToken ct)
     {
         try
         {
@@ -92,7 +92,7 @@ if ($rb) {
 }
 @{ size = $size; count = $count } | ConvertTo-Json -Compress
 """;
-            var r = PowerShellRunnerProxy.Run(script, 30_000);
+            var r = await PowerShellRunnerProxy.RunAsync(script, 30_000).ConfigureAwait(false);
             if (r == null) return null;
             var item = new MaintenanceCleanItem
             {
@@ -109,10 +109,10 @@ if ($rb) {
 
     private static class PowerShellRunnerProxy
     {
-        public static (long size, int count)? Run(string script, int timeoutMs)
+        public static async Task<(long size, int count)?> RunAsync(string script, int timeoutMs)
         {
-            var r = PcSecurityCenter.Platform.PowerShell.PowerShellRunner
-                .RunAsync(script, timeoutMs: timeoutMs).GetAwaiter().GetResult();
+            var r = await PcSecurityCenter.Platform.PowerShell.PowerShellRunner
+                .RunAsync(script, timeoutMs: timeoutMs).ConfigureAwait(false);
             try
             {
                 var j = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(r.StdOut.Trim());

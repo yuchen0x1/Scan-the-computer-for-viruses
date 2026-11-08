@@ -32,7 +32,6 @@ public class ScoreCalculator : IScoreCalculator
             return result;
         }
 
-        // 活动威胁强扣分（在检查项之外独立计算）
         double earned = 0, possible = 0;
         var byCategory = new Dictionary<string, (double earned, double possible)>();
 
@@ -49,13 +48,17 @@ public class ScoreCalculator : IScoreCalculator
         foreach (var (cat, (e, p)) in byCategory)
             result.CategoryScores[cat] = p > 0 ? (int)Math.Round(e * 100 / p) : 0;
 
-        var raw = possible > 0 ? earned / possible * 100.0 : 0.0;
+        // 全部检查项不可读时不给分：既不虚高也不虚低，如实标注评分不可用
+        if (possible <= 0)
+        {
+            result.Total = 0;
+            result.Grade = "未知";
+            result.Summary = "所有检查项均无法读取（权限不足/暂不支持），评分不可用。";
+            return result;
+        }
 
-        // 威胁扣分：由检查项中的活动威胁检测项体现，这里额外按严重度扣减上限 30 分
-        var threatPenalty = checks.Where(c => c.Id == "active-threats" && c.Status == CheckStatus.Risk)
-            .Sum(_ => 0); // 占位：威胁数量扣分在检查服务生成检查项时已按数量折算，这里不再重复扣
-
-        result.Total = (int)Math.Round(Math.Clamp(raw - threatPenalty, 0, 100));
+        var raw = earned / possible * 100.0;
+        result.Total = (int)Math.Round(Math.Clamp(raw, 0, 100));
         result.Grade = result.Total switch
         {
             >= 90 => "优秀",

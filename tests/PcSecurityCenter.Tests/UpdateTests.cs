@@ -90,3 +90,59 @@ public class UpdateTests
         Assert.Equal("1.0.1", list[1].Version);
     }
 }
+
+/// <summary>更新链安全（v1.1.0 加固回归）：文件名净化、校验和解析、资源挑选。</summary>
+public class UpdateSecurityTests
+{
+    [Theory]
+    [InlineData("../../evil.exe", "evil.exe")]
+    [InlineData(@"..\..\evil.exe", "evil.exe")]
+    [InlineData("sub/dir/file.exe", "file.exe")]
+    [InlineData("PcSecurityCenter-Setup-1.1.0.exe", "PcSecurityCenter-Setup-1.1.0.exe")]
+    public void SafeFileName_路径穿越_只保留末段(string raw, string expected)
+    {
+        Assert.Equal(expected, new ReleaseAsset { Name = raw }.SafeFileName());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("..")]
+    [InlineData("bad<name>.exe")]
+    public void SafeFileName_非法名称_返回null(string raw)
+    {
+        Assert.Null(new ReleaseAsset { Name = raw }.SafeFileName());
+    }
+
+    [Fact]
+    public void ChecksumFile_解析标准行并跳过非法行()
+    {
+        var map = ChecksumFile.Parse(string.Join('\n',
+            "# 注释行",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  PcSecurityCenter-Setup-1.1.0.exe",
+            "FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210FEDCBA9876543210 *portable.zip",
+            "nothash  file.exe",
+            "1234  bad.exe"));
+        Assert.Equal(2, map.Count);
+        Assert.Equal("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            map["PcSecurityCenter-Setup-1.1.0.exe"]);
+        Assert.Equal("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            map["portable.zip"]);
+    }
+
+    [Fact]
+    public void ReleaseAssets_挑选安装包与校验和()
+    {
+        var r = new ReleaseInfo
+        {
+            Assets =
+            {
+                new ReleaseAsset { Name = "PcSecurityCenter-Setup-1.1.0.exe" },
+                new ReleaseAsset { Name = "SHA256SUMS.txt" },
+                new ReleaseAsset { Name = "PcSecurityCenter-Portable-1.1.0.zip" },
+            },
+        };
+        Assert.Equal("SHA256SUMS.txt", r.ChecksumsAsset!.Name);
+        Assert.Equal("PcSecurityCenter-Setup-1.1.0.exe", r.SetupAsset!.Name);
+    }
+}

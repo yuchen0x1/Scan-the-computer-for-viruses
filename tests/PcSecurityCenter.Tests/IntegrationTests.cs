@@ -387,3 +387,104 @@ public class SecurityCheckIntegrationTests
         Assert.InRange(score.Total, 0, 100);
     }
 }
+
+/// <summary>隔离区安全加固回归（v1.1.0）：密钥 DPAPI 保护、索引损坏保留现场、旧格式兼容、HMAC 篡改拒绝。</summary>
+public class QuarantineSecurityTests : IDisposable
+{
+    private readonly string _baseDir = Path.Combine(Path.GetTempPath(), $"psc_qsec_{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try { if (Directory.Exists(_baseDir)) Directory.Delete(_baseDir, true); } catch (Exception) { }
+    }
+
+    [Fact]
+    public void VaultKey_DPAPI保护_不是明文32字节()
+    {
+        var vaultDir = Path.Combine(_baseDir, "k1");
+        _ = new QuarantineService(vaultDir);
+        var key = File.ReadAllBytes(Path.Combine(vaultDir, "vault.key"));
+        Assert.NotEqual(32, key.Length);
+    }
+
+    [Fact]
+    public async Task Index损坏_保留现场不静默覆写()
+    {
+        var vaultDir = Path.Combine(_baseDir, "k2");
+        var svc = new QuarantineService(vaultDir);
+        var work = Path.Combine(_baseDir, "work");
+        Directory.CreateDirectory(work);
+        var src = Path.Combine(work, "a.exe");
+        await File.WriteAllBytesAsync(src, new byte[] { 1, 2, 3 });
+        var entry = await svc.QuarantineFileAsync(src, "测试", "SmartRisk", ThreatSeverity.Low);
+        Assert.NotNull(entry);
+
+        var index = Path.Combine(vaultDir, "index.records.json");
+        File.WriteAllText(index, "{ this is not json !!!");
+        Assert.Empty(await svc.ListAsync());
+        Assert.False(File.Exists(index), "损坏索引应被移开而不是原地覆写");
+        Assert.Contains(Directory.GetFiles(vaultDir), f => Path.GetFileName(f).Contains(".corrupt-"));
+    }
+
+    [Fact]
+    public async Task 密文正文被篡改_HMAC拒绝恢复()
+    {
+        var vaultDir = Path.Combine(_baseDir, "k4");
+        var svc = new QuarantineService(vaultDir);
+        var work = Path.Combine(_baseDir, "work4");
+        Directory.CreateDirectory(work);
+        var src = Path.Combine(work, "b.exe");
+        await File.WriteAllBytesAsync(src, new byte[] { 9, 8, 7, 6, 5, 4 });
+        var entry = await svc.QuarantineFileAsync(src, "测试", "SmartRisk", ThreatSeverity.Low);
+        var vaultFile = Path.Combine(vaultDir, entry.VaultFileName);
+        File.SetAttributes(vaultFile, FileAttributes.Normal);
+        var cipher = await File.ReadAllBytesAsync(vaultFile);
+        cipher[10] ^= 0xFF; // 篡改正文中段（而非尾部标签）
+        await File.WriteAllBytesAsync(vaultFile, cipher);
+        Assert.False(await svc.RestoreAsync(entry.Id, Path.Combine(_baseDir, "out4")));
+    }
+
+    [Fact]
+    public async Task 旧v1格式隔离文件仍可恢复且密钥自动迁移()
+    {
+        var vaultDir = Path.Combine(_baseDir, "k3");
+        Directory.CreateDirectory(vaultDir);
+        var rawKey = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        File.WriteAllBytes(Path.Combine(vaultDir, "vault.key"), rawKey); // v1.0.0 明文密钥
+
+        var payload = new byte[1234];
+        Random.Shared.NextBytes(payload);
+        byte[] cipher;
+        using (var aes = System.Security.Cryptography.Aes.Create())
+        {
+            aes.Key = rawKey;
+            aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+            aes.Padding = System.Security.Cryptography.PaddingMode.PKCS7;
+            aes.GenerateIV();
+            using var ms = new MemoryStream();
+            ms.Write(aes.IV);
+            using (var cs = new System.Security.Cryptography.CryptoStream(
+                ms, aes.CreateEncryptor(), System.Security.Cryptography.CryptoStreamMode.Write, leaveOpen: true))
+                cs.Write(payload);
+            cipher = ms.ToArray();
+        }
+        File.WriteAllBytes(Path.Combine(vaultDir, "q_legacy.qtn"), cipher);
+
+        var entryId = Guid.NewGuid();
+        var plainSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(payload)).ToLowerInvariant();
+        var cipherSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(cipher)).ToLowerInvariant();
+        var json = $"[{{\"Entry\":{{\"Id\":\"{entryId}\",\"OriginalPath\":\"C:/temp/legacy.bin\",\"FileName\":\"legacy.bin\"," +
+            $"\"SizeBytes\":{payload.Length},\"OriginalSha256\":\"{plainSha}\",\"VaultFileName\":\"q_legacy.qtn\"," +
+            $"\"QuarantinedAt\":\"2026-01-01T00:00:00\",\"Reason\":\"旧版\",\"Engine\":\"SmartRisk\",\"Severity\":1}}," +
+            $"\"CipherSha256\":\"{cipherSha}\"}}]";
+        File.WriteAllText(Path.Combine(vaultDir, "index.records.json"), json);
+
+        var svc = new QuarantineService(vaultDir); // 加载时应把明文密钥迁移为 DPAPI 包裹
+        Assert.NotEqual(32, File.ReadAllBytes(Path.Combine(vaultDir, "vault.key")).Length);
+
+        var restored = await svc.RestoreAsync(entryId, Path.Combine(_baseDir, "restored3"));
+        Assert.True(restored);
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(_baseDir, "restored3", "legacy.bin"));
+        Assert.Equal(payload, bytes);
+    }
+}

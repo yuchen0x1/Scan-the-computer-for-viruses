@@ -34,9 +34,6 @@ public class WindowsPermissionService : IPermissionService
         // 通过 -EncodedCommand + Start-Process -Verb RunAs 触发 UAC；
         // 参数以环境变量方式传给子进程（在 -EncodedCommand 内读取），全程无字符串拼接用户输入。
         var encoded = PowerShellRunner.Encode(script);
-        var envPairs = args == null
-            ? "($null)"
-            : string.Join(',', args.Keys);
 
         var launcher = $"""
 $op = '{op}'
@@ -67,8 +64,11 @@ $psi.EnvironmentVariables['PSC_OPARGS'] = '{op}'
 $out = $psi.EnvironmentVariables['PSC_OPARGS']
 try {
   $p = [System.Diagnostics.Process]::Start($psi)
+  $outTask = $p.StandardOutput.ReadToEndAsync()
+  $errTask = $p.StandardError.ReadToEndAsync()
   $p.WaitForExit(600000) | Out-Null
-  $text = $p.StandardOutput.ReadToEnd()
+  $text = $outTask.Result
+  if ($errTask.Result) { $text = $text + [Environment]::NewLine + $errTask.Result }
   if (-not $text) { $text = '（无输出）' }
   @{ ok = ($p.ExitCode -eq 0); out = $text } | ConvertTo-Json -Compress
 } catch {
@@ -90,15 +90,23 @@ try {
         ElevatedOperation.CreateRestorePoint => (
             """
 $desc = $env:PSC_DESC
+$freqKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
+$oldFreq = $null
 try {
-  $range = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -Name SystemRestorePointCreationFrequency -ErrorAction SilentlyContinue
+  $range = Get-ItemProperty $freqKey -Name SystemRestorePointCreationFrequency -ErrorAction SilentlyContinue
+  if ($range) { $oldFreq = $range.SystemRestorePointCreationFrequency }
   if ($range -and $range.SystemRestorePointCreationFrequency -gt 0) {
-    Set-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' -Name SystemRestorePointCreationFrequency -Value 0
+    Set-ItemProperty $freqKey -Name SystemRestorePointCreationFrequency -Value 0
   }
   Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue
   Checkpoint-Computer -Description $desc -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
   'RESTOREPOINT_OK'
 } catch { 'RESTOREPOINT_FAIL: ' + $_.Exception.Message }
+finally {
+  if ($null -ne $oldFreq) {
+    try { Set-ItemProperty $freqKey -Name SystemRestorePointCreationFrequency -Value $oldFreq } catch { }
+  }
+}
 """, 600_000),
         ElevatedOperation.RunSfcVerifyOnly => (
             """

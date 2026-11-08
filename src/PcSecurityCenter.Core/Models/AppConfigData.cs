@@ -3,7 +3,7 @@ namespace PcSecurityCenter.Core.Models;
 /// <summary>应用配置（JSON 持久化）。仅包含应用自身行为偏好，不收集任何隐私数据。</summary>
 public class AppConfigData
 {
-    public string AppVersion { get; set; } = "1.0.0";
+    public string AppVersion { get; set; } = "1.1.0";
     public int PerformanceIntervalMs { get; set; } = 2000;
     public int RealtimePollIntervalSec { get; set; } = 15;
     public bool RealtimeEnabled { get; set; } = true;

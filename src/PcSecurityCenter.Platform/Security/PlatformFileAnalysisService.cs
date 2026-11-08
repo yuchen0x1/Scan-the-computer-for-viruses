@@ -12,12 +12,12 @@ public class PlatformFileAnalysisService : IFileAnalysisService
 
     public PlatformFileAnalysisService()
     {
-        _analyzer = new FileAnalyzer(path =>
+        _analyzer = new FileAnalyzer(async path =>
         {
             var v = SignatureVerifier.Verify(path);
             if (v.IsSigned)
             {
-                var probe = SignatureVerifier.ProbeViaPowerShell(path);
+                var probe = await SignatureVerifier.ProbeAsync(path).ConfigureAwait(false);
                 return (v.IsValid, probe.subject ?? v.Subject, v.StatusText);
             }
             return (false, v.Subject, v.StatusText);

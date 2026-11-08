@@ -11,7 +11,6 @@
     <AssemblyTitle>Windows 智能安全卫士</AssemblyTitle>
     <AssemblyProduct>Windows 智能安全卫士 (PC Security Center)</AssemblyProduct>
     <AssemblyDescription>病毒查杀 · 实时防护 · 系统安全 · 性能监控 · 系统维护</AssemblyDescription>
-    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

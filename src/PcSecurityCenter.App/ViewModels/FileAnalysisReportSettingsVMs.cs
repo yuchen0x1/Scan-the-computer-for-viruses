@@ -178,11 +178,11 @@ public partial class ReportCenterViewModel : ObservableObject
         await Task.CompletedTask;
     }
 
-    private Task<ReportData> BuildReportDataAsync() => Task.Run(() =>
+    private Task<ReportData> BuildReportDataAsync() => Task.Run(async () =>
     {
         // 全部数据采集（WMI/DriveInfo/SQLite）都放到线程池，
         // 避免点击导出时 UI 线程同步等待导致界面冻结数秒。
-        var hw = _performance.GetHardwareInfoAsync().GetAwaiter().GetResult();
+        var hw = await _performance.GetHardwareInfoAsync().ConfigureAwait(false);
         var checks = _checks.GetLatestRun();
         return new ReportData
         {

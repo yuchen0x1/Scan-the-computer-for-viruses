@@ -106,11 +106,18 @@ public class WindowsRealtimeProtector : IRealtimeProtector
     }
 
     // ---------- 启动文件夹事件 ----------
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _lastEventTicks = new();
+
     private void OnStartupFolderChange(string fullPath, string dir)
     {
         try
         {
             if (!File.Exists(fullPath)) return;
+            // 同一路径 2 秒内的重复事件只处理一次，防止事件风暴逐事件同步读文件
+            var now = Environment.TickCount64;
+            if (_lastEventTicks.TryGetValue(fullPath, out var last) && now - last < 2000) return;
+            _lastEventTicks[fullPath] = now;
+            if (_lastEventTicks.Count > 1024) _lastEventTicks.Clear();
             var ext = Path.GetExtension(fullPath).ToLowerInvariant();
             var indicators = SmartRiskEngine.ScriptContentIndicators(fullPath);
             var severity = indicators.Count > 0 ? ThreatSeverity.High : ThreatSeverity.Medium;
@@ -126,8 +133,10 @@ public class WindowsRealtimeProtector : IRealtimeProtector
     }
 
     // ---------- 低频轮询 ----------
+    private int _pollBusy;
     private async Task PollAsync()
     {
+        if (Interlocked.Exchange(ref _pollBusy, 1) == 1) return; // 重入保护：上一轮未完则跳过本轮
         try
         {
             CheckRunKeyChanges();
@@ -137,6 +146,7 @@ public class WindowsRealtimeProtector : IRealtimeProtector
         {
             Serilog.Log.Debug(ex, "实时防护轮询异常（已忽略）");
         }
+        finally { Interlocked.Exchange(ref _pollBusy, 0); }
         await Task.CompletedTask;
     }
 
@@ -228,8 +238,10 @@ public class WindowsRealtimeProtector : IRealtimeProtector
             _knownProcessIds.Clear();
     }
 
+    private int _defenderPollBusy;
     private async Task PollDefenderAsync()
     {
+        if (Interlocked.Exchange(ref _defenderPollBusy, 1) == 1) return; // 重入保护
         try
         {
             var st = await _defender.GetStatusAsync().ConfigureAwait(false);
@@ -246,6 +258,7 @@ public class WindowsRealtimeProtector : IRealtimeProtector
             _lastDefenderRt = st.RealTimeProtection;
         }
         catch (Exception) { }
+        finally { Interlocked.Exchange(ref _defenderPollBusy, 0); }
     }
 
     public void Dispose()
