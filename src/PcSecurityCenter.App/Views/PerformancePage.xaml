@@ -1,0 +1,99 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.PerformancePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="性能监控" Style="{StaticResource PageTitle}" />
+            <TextBlock Style="{StaticResource PageSubTitle}"
+                       Text="真实硬件数据：PerformanceCounter / WMI / GlobalMemoryStatusEx。不支持的传感器如实显示「不支持」，不生成虚构数据。" />
+
+            <!-- 数据卡：两列布局（窄窗口下每卡约 360px，文字有足够换行空间） -->
+            <UniformGrid Columns="2" Margin="0,0,0,14">
+                <Border Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="CPU" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                        <TextBlock FontSize="26" FontWeight="Bold" Foreground="{DynamicResource BrushAccent}">
+                            <Run Text="{Binding CpuUsage, Mode=OneWay, StringFormat={}{0:F0}}" /><Run Text="%" FontSize="14" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding CpuName}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}"
+                                   TextWrapping="Wrap" MaxHeight="44" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding CpuCoresText}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}" Margin="0,2,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="内存" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                        <TextBlock FontSize="26" FontWeight="Bold" Foreground="{DynamicResource BrushAccentBlue}">
+                            <Run Text="{Binding MemoryUsagePercent, Mode=OneWay, StringFormat={}{0:F0}}" /><Run Text="%" FontSize="14" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding MemoryDetail}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="GPU" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                        <TextBlock FontSize="26" FontWeight="Bold" Foreground="{DynamicResource BrushPurple}">
+                            <Run Text="{Binding GpuUsage, Mode=OneWay, StringFormat={}{0:F0}}" /><Run Text="%" FontSize="14" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding GpuDetail}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}"
+                                   TextWrapping="Wrap" MaxHeight="44" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Text="网络 / 温度" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                        <TextBlock Text="{Binding NetSpeedText}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource BrushOk}" />
+                        <TextBlock Text="{Binding TemperatureText}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}"
+                                   TextWrapping="Wrap" MaxHeight="44" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- 曲线图 -->
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <TextBlock Text="实时曲线（最近 60 个采样点）" FontWeight="Bold" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock Text="刷新间隔(ms)" FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding IntervalMs}" Width="70" Margin="6,0" FontSize="12" />
+                            <Button Content="应用" Style="{StaticResource SmallGhostButton}" Command="{Binding ApplyIntervalCommand}" />
+                        </StackPanel>
+                    </Grid>
+                    <lvc:CartesianChart Height="190" Series="{Binding CpuChartSeries}" XAxes="{Binding XAxes}" YAxes="{Binding YAxes}" />
+                    <lvc:CartesianChart Height="190" Series="{Binding MemChartSeries}" XAxes="{Binding XAxes}" YAxes="{Binding YAxes}" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 磁盘 -->
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="磁盘" FontWeight="Bold" Margin="0,0,0,8" />
+                    <ItemsControl ItemsSource="{Binding Disks}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource InnerCard}" Margin="0,0,0,7" Padding="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" MinWidth="80" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding DriveLetter}" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                                        <ProgressBar Grid.Column="1" Maximum="100" Value="{Binding UsedPercent, Mode=OneWay}"
+                                                     Style="{StaticResource AccentProgress}" Height="8" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        <TextBlock Grid.Column="2" FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}" VerticalAlignment="Center">
+                                            <Run Text="剩余 " /><Run Text="{Binding FreeBytesHuman, Mode=OneWay}" />
+                                            <Run Text=" / " /><Run Text="{Binding TotalBytesHuman, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

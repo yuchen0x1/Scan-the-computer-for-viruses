@@ -1,0 +1,26 @@
+# .NET build outputs
+**/bin/
+**/obj/
+[Bb]in/
+[Oo]bj/
+TestResults/
+.vs/
+
+# Published binaries and installers
+publish/
+installer/*.exe
+installer/*.msi
+
+# User-local settings and secrets
+*.user
+*.suo
+.env
+.env.*
+!.env.example
+
+# Logs, crash dumps, and temporary screenshots
+*.log
+*.dmp
+close_hover.png
+tools/shot.py
+tools/hover_test.py

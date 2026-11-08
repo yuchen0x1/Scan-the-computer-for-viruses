@@ -1,0 +1,154 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.DashboardPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:PcSecurityCenter.App.Controls">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="安全驾驶舱" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="综合安全状态总览 —— 全部数据来自本机真实接口与引擎" Style="{StaticResource PageSubTitle}" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" MinWidth="260" />
+                    <ColumnDefinition Width="3*" MinWidth="320" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 评分卡 -->
+                <Border Grid.Column="0" Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <ctrl:ArcGauge x:Name="Gauge" Value="{Binding Score, Mode=OneWay}" Grade="{Binding ScoreGrade}"
+                                       Height="200" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding ScoreSummary}" TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource BrushTextSecondary}"
+                                   HorizontalAlignment="Center" Margin="0,6,0,12" TextAlignment="Center" />
+                        <Button Content="一键全面体检" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding FullCheckCommand}" IsEnabled="{Binding !IsChecking}"
+                                HorizontalAlignment="Stretch" />
+                        <Button Content="快速扫描入口 →" Style="{StaticResource GhostButton}"
+                                Command="{Binding QuickScanCommand}" Margin="0,8,0,0"
+                                HorizontalAlignment="Stretch" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 防护状态卡组 -->
+                    <UniformGrid Grid.Row="0" Columns="2" Margin="0,0,0,14">
+                        <Border Style="{StaticResource InnerCard}" Margin="0,0,9,9">
+                            <StackPanel>
+                                <TextBlock Text="Defender 状态" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <TextBlock Text="{Binding DefenderStatus}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="9,0,0,9">
+                            <StackPanel>
+                                <TextBlock Text="Windows 防火墙" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <TextBlock Text="{Binding FirewallStatus}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="0,0,9,9">
+                            <StackPanel>
+                                <TextBlock Text="Windows 更新" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <TextBlock Text="{Binding UpdateStatus}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="9,0,0,9">
+                            <StackPanel>
+                                <TextBlock Text="威胁数量 / 最近扫描" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <TextBlock Text="{Binding ThreatCountText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding LastScanText}" FontSize="11.5" Foreground="{DynamicResource BrushTextMuted}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <!-- 性能卡组 -->
+                    <UniformGrid Grid.Row="1" Columns="2">
+                        <Border Style="{StaticResource InnerCard}" Margin="0,0,9,9">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="CPU" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" HorizontalAlignment="Left" />
+                                    <TextBlock Text="{Binding CpuName}" FontSize="10.5" Foreground="{DynamicResource BrushTextMuted}"
+                                               HorizontalAlignment="Right" MaxWidth="220" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                                <ProgressBar Value="{Binding CpuPercent}" Maximum="100" Style="{StaticResource AccentProgress}" Margin="0,7,0,5" />
+                                <TextBlock Text="{Binding CpuText}" FontSize="12" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="9,0,0,9">
+                            <StackPanel>
+                                <TextBlock Text="内存" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <ProgressBar Value="{Binding MemoryPercent}" Maximum="100" Style="{StaticResource AccentProgress}" Margin="0,7,0,5" />
+                                <TextBlock Text="{Binding MemoryText}" FontSize="12" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="0,0,9,9">
+                            <StackPanel>
+                                <Grid>
+                                    <TextBlock Text="GPU" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" HorizontalAlignment="Left" />
+                                    <Button Content="↻" Command="{Binding RefreshPerformanceCommand}" Style="{StaticResource SmallGhostButton}"
+                                            Padding="6,2" HorizontalAlignment="Right" />
+                                </Grid>
+                                <ProgressBar Value="{Binding GpuPercent}" Maximum="100" Style="{StaticResource AccentProgress}" Margin="0,7,0,5" />
+                                <TextBlock Text="{Binding GpuText}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource InnerCard}" Margin="9,0,0,9">
+                            <StackPanel>
+                                <TextBlock Text="磁盘 / 网络" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" />
+                                <ProgressBar Value="{Binding DiskPercent}" Maximum="100" Style="{StaticResource AccentProgress}" Margin="0,7,0,5" />
+                                <TextBlock Text="{Binding DiskText}" FontSize="12" />
+                                <TextBlock Text="{Binding NetSpeedText}" FontSize="12" Foreground="{DynamicResource BrushAccent}" Margin="0,3,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                </Grid>
+            </Grid>
+
+            <!-- 修复建议 + 最近事件 -->
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="180" />
+                    <ColumnDefinition Width="*" MinWidth="180" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,9,0">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="系统修复建议" FontWeight="Bold" />
+                            <Button Content="更新病毒库" Style="{StaticResource SmallGhostButton}" DockPanel.Dock="Right"
+                                    Command="{Binding UpdateSignaturesCommand}" HorizontalAlignment="Right" />
+                        </DockPanel>
+                        <ItemsControl ItemsSource="{Binding RepairSuggestions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12" Margin="0,3"
+                                               Foreground="{DynamicResource BrushTextPrimary}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource SectionCard}" Margin="9,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="最近安全事件" FontWeight="Bold" Margin="0,0,0,8" />
+                        <ItemsControl ItemsSource="{Binding RecentEvents}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock FontSize="11.5" Margin="0,3,0,3" TextWrapping="Wrap">
+                                        <Run Text="● " Foreground="{DynamicResource BrushAccent}" />
+                                        <Run Text="{Binding CreatedAt, Mode=OneWay, StringFormat=MM-dd HH:mm}" Foreground="{DynamicResource BrushTextMuted}" />
+                                        <Run Text="{Binding Title, Mode=OneWay}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding LastCheckText}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>PcSecurityCenter.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyTitle>Windows 智能安全卫士</AssemblyTitle>
+    <AssemblyProduct>Windows 智能安全卫士 (PC Security Center)</AssemblyProduct>
+    <AssemblyDescription>病毒查杀 · 实时防护 · 系统安全 · 性能监控 · 系统维护</AssemblyDescription>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PcSecurityCenter.Core\PcSecurityCenter.Core.csproj" />
+    <ProjectReference Include="..\PcSecurityCenter.Data\PcSecurityCenter.Data.csproj" />
+    <ProjectReference Include="..\PcSecurityCenter.Platform\PcSecurityCenter.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
+    <PackageReference Include="QuestPDF" Version="2025.7.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcSecurityCenter.Core</RootNamespace>
+    <Description>核心业务逻辑层：安全模型、评分、扫描编排、风险规则、文件分析、报告构建</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+  </ItemGroup>
+
+</Project>

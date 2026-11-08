@@ -1,0 +1,155 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.NetworkPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="网络安全" Style="{StaticResource PageTitle}" />
+            <TextBlock Text="连接监控 · 防火墙 · DNS/代理/Hosts 检查 —— 可疑连接仅做风险提示（标注依据），不做自动封禁"
+                       Style="{StaticResource PageSubTitle}" />
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 连接列表 -->
+                <Border Grid.Column="0" Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="TCP 连接（进程关联）" FontWeight="Bold" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding TrafficText}" FontSize="12" Foreground="{DynamicResource BrushAccent}"
+                                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Button Content="↻ 刷新" Style="{StaticResource SmallGhostButton}" Command="{Binding RefreshCommand}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <DataGrid ItemsSource="{Binding Connections}" MaxHeight="330" FontSize="11.5" RowHeight="28"
+                                  EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="远程地址" Binding="{Binding RemoteAddress}" Width="100">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip" Value="{Binding RemoteAddress}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="端口" Binding="{Binding RemotePort}" Width="52">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip" Value="{Binding RemotePort}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="状态" Binding="{Binding State}" Width="58">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip" Value="{Binding State}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="进程" Binding="{Binding ProcessName}" Width="78">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip" Value="{Binding ProcessName}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="PID" Binding="{Binding ProcessId}" Width="45">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="ToolTip" Value="{Binding ProcessId}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTemplateColumn Header="签名" Width="40">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock FontSize="12">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="✓" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource BrushOk}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSigned}" Value="False">
+                                                                <Setter Property="Text" Value="✕" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource BrushWarn}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="风险提示" Binding="{Binding SuspiciousReason}" Width="*" MinWidth="90" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 右列 -->
+                <StackPanel Grid.Column="1" Margin="9,0,0,0">
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="防火墙配置文件" FontWeight="Bold" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding FirewallProfiles}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource InnerCard}" Margin="0,0,0,6" Padding="10">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding ProfileName}" FontSize="12.5" FontWeight="SemiBold" />
+                                                <TextBlock FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}">
+                                                    <Run Text="{Binding Enabled, Mode=OneWay}" /><Run Text=" · 入站 " /><Run Text="{Binding InboundAction, Mode=OneWay}" />
+                                                    <Run Text=" · 出站 " /><Run Text="{Binding OutboundAction, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="代理 / DNS / Hosts" FontWeight="Bold" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding ProxyText}" FontSize="11.5" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DnsText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <TextBlock Text="{Binding HostsSummary}" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <ItemsControl ItemsSource="{Binding NonLocalHostsRedirects}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontSize="11" Foreground="{DynamicResource BrushWarn}" Margin="0,2" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="刷新 DNS 缓存" Style="{StaticResource SmallGhostButton}" Command="{Binding FlushDnsCommand}" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="网络适配器" FontWeight="Bold" Margin="0,0,0,8" />
+                            <ItemsControl ItemsSource="{Binding Adapters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource InnerCard}" Margin="0,0,0,6" Padding="10">
+                                            <StackPanel>
+                                                <TextBlock FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           Text="{Binding Name, StringFormat={}{0} ({1})}" />
+                                                <TextBlock FontSize="11" Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap">
+                                                    <Run Text="{Binding Status, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding MacAddress, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

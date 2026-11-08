@@ -1,0 +1,44 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.AdvancedToolsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="高级工具" Style="{StaticResource PageTitle}" />
+            <TextBlock Style="{StaticResource PageSubTitle}"
+                       Text="只读查看：系统信息 · 环境变量 · 电源模式 · 服务 · 适配器；修改类操作必须确认并记录" />
+
+            <WrapPanel>
+                <Button Content="系统信息" Style="{StaticResource GhostButton}" Command="{Binding LoadSystemInfoCommand}" Margin="0,0,8,8" />
+                <Button Content="环境变量" Style="{StaticResource GhostButton}" Command="{Binding LoadEnvVarsCommand}" Margin="0,0,8,8" />
+                <Button Content="电源模式" Style="{StaticResource GhostButton}" Command="{Binding LoadPowerPlansCommand}" Margin="0,0,8,8" />
+                <Button Content="网络适配器" Style="{StaticResource GhostButton}" Command="{Binding LoadAdaptersCommand}" Margin="0,0,8,8" />
+                <Button Content="系统服务" Style="{StaticResource GhostButton}" Command="{Binding LoadServicesCommand}" Margin="0,0,8,8" />
+                <Button Content="隐私设置快捷入口" Style="{StaticResource GhostButton}" Command="{Binding OpenPrivacySettingsCommand}" Margin="0,0,8,8" />
+            </WrapPanel>
+
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="输出" FontWeight="Bold" Margin="0,0,0,8" />
+                    <TextBox Text="{Binding SystemInfoText, Mode=OneWay}" IsReadOnly="True" MinHeight="200" MaxHeight="360"
+                             TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="11.5" FontFamily="Consolas" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="系统服务（只读；禁用服务需在服务管理器中操作，避免误禁关键服务）" FontWeight="Bold" Margin="0,0,0,8" />
+                    <DataGrid ItemsSource="{Binding Services}" MaxHeight="320" RowHeight="28" FontSize="11.5"
+                              EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="服务名" Binding="{Binding Name}" Width="170" />
+                            <DataGridTextColumn Header="显示名" Binding="{Binding DisplayName}" Width="180" />
+                            <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="60" />
+                            <DataGridTextColumn Header="启动类型" Binding="{Binding StartMode}" Width="60" />
+                            <DataGridTextColumn Header="可执行路径" Binding="{Binding ExePath}" Width="*" MinWidth="110" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

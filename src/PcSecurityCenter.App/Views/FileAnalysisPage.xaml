@@ -1,0 +1,57 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.FileAnalysisPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="文件安全分析" Style="{StaticResource PageTitle}" />
+            <TextBlock Style="{StaticResource PageSubTitle}"
+                       Text="SHA256/SHA1/MD5 · PE 头解析 · 数字签名验证 · 熵分析 —— 全部本地完成，不上传任何内容" />
+
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="180" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding FilePath, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
+                            <Button Content="浏览…" Style="{StaticResource GhostButton}" Command="{Binding BrowseCommand}" Margin="0,0,8,0" />
+                            <Button Content="分析" Style="{StaticResource PrimaryButton}" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="{Binding HashConsentNote}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}"
+                               TextWrapping="Wrap" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.55*" MinWidth="260" />
+                    <ColumnDefinition Width="*" MinWidth="240" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Text="分析结果" FontWeight="Bold" Margin="0,0,0,8" />
+                        <TextBox Text="{Binding ResultText, Mode=OneWay}" IsReadOnly="True" MinHeight="300" MaxHeight="420"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="12" FontFamily="Consolas" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource SectionCard}" Margin="9,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Defender 引擎验证" FontWeight="Bold" Margin="0,0,0,8" />
+                        <TextBlock Text="对当前文件执行 Defender 官方引擎扫描（MpCmdRun 定向扫描），验证文件是否被当前病毒库判定为威胁。"
+                                   FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap" />
+                        <Button Content="对文件执行 Defender 扫描" Style="{StaticResource PrimaryButton}" Margin="0,10,0,0"
+                                Command="{Binding DefenderScanFileCommand}" IsEnabled="{Binding !IsBusy}" />
+                        <Border Style="{StaticResource HLine}" />
+                        <TextBlock Text="EICAR 引擎自检" FontWeight="Bold" Margin="0,0,0,6" />
+                        <TextBlock Text="{Binding EicarNote}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}" TextWrapping="Wrap" />
+                        <Button Content="生成 EICAR 测试文件" Style="{StaticResource GhostButton}" Margin="0,10,0,0"
+                                Command="{Binding GenerateEicarCommand}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

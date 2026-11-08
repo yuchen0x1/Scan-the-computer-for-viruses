@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>PcSecurityCenter.Platform</RootNamespace>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <Description>平台层：Defender 官方接口、WMI、PowerShell 调用、注册表、签名验证、提权执行</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PcSecurityCenter.Core\PcSecurityCenter.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+  </ItemGroup>
+
+</Project>

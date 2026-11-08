@@ -1,0 +1,103 @@
+using System.Text.Json;
+using PcSecurityCenter.Core.Abstractions;
+using PcSecurityCenter.Core.Models;
+using Serilog;
+
+namespace PcSecurityCenter.Data.Configuration;
+
+/// <summary>
+/// 统一配置管理（JSON，位于 %APPDATA%\PcSecurityCenter）。
+/// 不收集任何隐私数据；哈希查询等联网功能默认关闭。
+/// </summary>
+public class ConfigService : IConfigService
+{
+    private static readonly string DefaultConfigFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "PcSecurityCenter", "config.json");
+
+    private readonly string _configFile;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public AppConfigData Current { get; private set; } = new();
+
+    /// <summary>允许注入配置文件路径（默认用户目录；测试与便携版可覆盖）。</summary>
+    public ConfigService(string? configFile = null)
+    {
+        _configFile = configFile ?? DefaultConfigFile;
+    }
+
+    public Task LoadAsync()
+    {
+        try
+        {
+            if (File.Exists(_configFile))
+            {
+                var json = File.ReadAllText(_configFile);
+                Current = JsonSerializer.Deserialize<AppConfigData>(json, JsonOpts) ?? new AppConfigData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "配置读取失败，使用默认配置");
+            Current = new AppConfigData();
+        }
+        return Task.CompletedTask;
+    }
+
+    public async Task SaveAsync()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_configFile)!);
+            var json = JsonSerializer.Serialize(Current, JsonOpts);
+            await File.WriteAllTextAsync(_configFile, json);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "配置保存失败");
+        }
+    }
+}
+
+/// <summary>统一路径管理（禁止在业务代码里硬编码系统路径）。</summary>
+public static class AppPaths
+{
+    private static readonly string Root = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PcSecurityCenter");
+
+    public static string DataRoot => Root;
+    public static string LogsDir => Path.Combine(Root, "logs");
+    public static string DbFile => Path.Combine(Root, "security.db");
+    public static string ReportsDir => Path.Combine(Root, "reports");
+    public static string QuarantineDir => Path.Combine(Root, "Quarantine");
+
+    public static void EnsureAll()
+    {
+        Directory.CreateDirectory(Root);
+        Directory.CreateDirectory(LogsDir);
+        Directory.CreateDirectory(ReportsDir);
+    }
+}
+
+/// <summary>Serilog 日志初始化。</summary>
+public static class LoggingSetup
+{
+    public static void Initialize()
+    {
+        AppPaths.EnsureAll();
+        Serilog.Log.Logger = new Serilog.LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.File(
+                Path.Combine(AppPaths.LogsDir, "psec-.log"),
+                rollingInterval: Serilog.RollingInterval.Day,
+                retainedFileCountLimit: 30,
+                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+                shared: true)
+            .CreateLogger();
+    }
+}

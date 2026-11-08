@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PcSecurityCenter.App/PcSecurityCenter.App.csproj" />
+    <Project Path="src/PcSecurityCenter.Core/PcSecurityCenter.Core.csproj" />
+    <Project Path="src/PcSecurityCenter.Data/PcSecurityCenter.Data.csproj" />
+    <Project Path="src/PcSecurityCenter.Platform/PcSecurityCenter.Platform.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj" />
+  </Folder>
+</Solution>

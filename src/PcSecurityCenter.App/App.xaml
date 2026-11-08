@@ -1,0 +1,14 @@
+<Application x:Class="PcSecurityCenter.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 调色板（亮/暗）不在此静态合并：由 ThemeService.Apply 在启动时按用户配置注入，
+                     切换主题时替换合并字典，配合 {DynamicResource} 实现实时换肤。 -->
+                <ResourceDictionary Source="Themes/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,64 @@
+<UserControl x:Class="PcSecurityCenter.App.Views.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <TextBlock Text="设置中心" Style="{StaticResource PageTitle}" />
+            <TextBlock Style="{StaticResource PageSubTitle}"
+                       Text="统一配置管理（%APPDATA%\PcSecurityCenter\config.json）—— 不收集任何隐私数据" />
+
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <TextBlock Text="外观主题" FontWeight="Bold" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <RadioButton Content="亮色（白天模式，默认）" IsChecked="{Binding UseLightTheme}"
+                                     GroupName="AppTheme" Margin="0,0,18,0" FontSize="13" />
+                        <RadioButton Content="暗色（夜间模式）" IsChecked="{Binding UseLightTheme, Converter={StaticResource InverseBool}}"
+                                     GroupName="AppTheme" FontSize="13" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ThemeSummary}" FontSize="12"
+                               Foreground="{DynamicResource BrushTextSecondary}" Margin="0,2,0,10" />
+                    <Button Content="应用主题" Style="{StaticResource PrimaryButton}"
+                            Command="{Binding ApplyThemeCommand}" HorizontalAlignment="Left" />
+                    <Border Style="{StaticResource HLine}" />
+                    <TextBlock Text="性能监控" FontWeight="Bold" Margin="0,0,0,10" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="刷新间隔（毫秒，500-60000）：" FontSize="12.5" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding PerformanceIntervalMs}" Width="90" />
+                    </StackPanel>
+                    <TextBlock Text="实时防护" FontWeight="Bold" Margin="0,10,0,10" />
+                    <CheckBox Content="启用实时防护（启动目录监控 + 低频轮询）" IsChecked="{Binding RealtimeEnabled}" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="轮询间隔（秒，5-300）：" FontSize="12.5" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding RealtimePollSec}" Width="80" />
+                    </StackPanel>
+                    <CheckBox Content="自动更新 Defender 病毒库（每日启动时）" IsChecked="{Binding AutoUpdateSignatures}" Margin="0,0,0,6" />
+                    <TextBlock Text="隐私与联网" FontWeight="Bold" Margin="0,14,0,10" />
+                    <CheckBox Content="启用哈希信誉查询（可选；需自行配置 API Key 并知晓哈希会被发送）" IsChecked="{Binding HashLookupEnabled}" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="API Key：" FontSize="12.5" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding HashLookupApiKey}" Width="280" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource SectionCard}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,10">
+                        <Button Content="保存设置" Style="{StaticResource PrimaryButton}" Command="{Binding SaveCommand}" DockPanel.Dock="Left" />
+                        <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource BrushOk}"
+                                   VerticalAlignment="Center" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap">
+                        <Run Text="数据目录：" /><Run Text="{Binding DataDirText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="打开日志目录" Style="{StaticResource GhostButton}" Command="{Binding OpenLogsCommand}" Margin="0,0,8,0" />
+                        <Button Content="打开数据目录" Style="{StaticResource GhostButton}" Command="{Binding OpenDataDirCommand}" Margin="0,0,8,0" />
+                        <Button Content="关于与能力说明" Style="{StaticResource GhostButton}" Command="{Binding AboutCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
