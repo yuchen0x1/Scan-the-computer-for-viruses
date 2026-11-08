@@ -28,7 +28,7 @@ Compress-Archive -Path "publish/selfcontained/*" -DestinationPath $zip -Compress
 # 附带文档（含 LICENSE）
 $tmp = "publish/_portable_doc"
 New-Item -ItemType Directory -Force $tmp | Out-Null
-Copy-Item installer/使用说明.md installer/更新日志.md installer/LICENSES.md LICENSE $tmp -Force
+Copy-Item installer/使用说明.md,installer/更新日志.md,installer/LICENSES.md,LICENSE $tmp -Force
 Compress-Archive -Path "$tmp/*" -DestinationPath $zip -Update
 Remove-Item $tmp -Recurse -Force
 Write-Host "  $zip"
