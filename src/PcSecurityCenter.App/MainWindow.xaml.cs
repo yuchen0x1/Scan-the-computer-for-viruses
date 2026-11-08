@@ -25,6 +25,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly System.Windows.Forms.NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.ContextMenuStrip _trayMenu;
     private bool _allowExit;
+    private bool _trayHintShown;
     private readonly List<(string title, string msg, ThreatSeverity sev, DateTime time)> _notifications2 = new();
 
     public string GlobalStatusText { get; set; } = "评估中…";
@@ -185,9 +186,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         else DragMove();
     }
-    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => HideToTray();
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    // 最小化与关闭都收进通知区域：窗口从桌面和任务栏消失，进程与实时防护继续运行。
+    private void HideToTray()
+    {
+        Hide();
+        if (_trayHintShown) return;
+        _trayHintShown = true;
+        try
+        {
+            _trayIcon.ShowBalloonTip(2500, "Windows 智能安全卫士",
+                "已收进系统托盘，单击图标恢复窗口，右键菜单可退出。",
+                System.Windows.Forms.ToolTipIcon.Info);
+        }
+        catch (Exception) { }   // 通知区域不可用时不影响隐藏逻辑
+    }
 
     // 点击关闭或 Alt+F4 时隐藏到通知区域，避免误退出并让实时防护继续运行。
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
@@ -204,7 +220,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Hide();
     }
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Hide();
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => HideToTray();
 
     private void RestoreFromTray()
     {
@@ -247,6 +263,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // 最大化时取消圆角，避免四角露出桌面缝隙
             ApplyCornerPreference(WindowState == WindowState.Maximized ? DWMWCP_DONOTROUND : DWMWCP_ROUND);
             UpdateMaximizeIcon();
+            // 系统级最小化（Win+下、任务栏点击）同样收进通知区域
+            if (WindowState == WindowState.Minimized) HideToTray();
         };
         UpdateMaximizeIcon();
     }
