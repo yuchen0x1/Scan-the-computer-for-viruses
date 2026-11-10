@@ -4,7 +4,7 @@
 #define AppName "Windows 智能安全卫士"
 #define AppNameEn "PC Security Center"
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.2.0"
 #endif
 #define AppExe "PcSecurityCenter.App.exe"
 #define PublishDir "..\publish\selfcontained"
@@ -28,6 +28,8 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 PrivilegesRequired=admin
+; 目标框架 net10.0-windows10.0.19041.0 要求 Windows 10 2004 (build 19041) 及以上
+MinVersion=10.0.19041
 LicenseFile=LICENSE.rtf
 ; 安装前信息使用纯文本（.md 会被原样显示 Markdown 符号）
 InfoBeforeFile=安装前信息.txt

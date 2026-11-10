@@ -336,7 +336,8 @@ public partial class SettingsViewModel : ObservableObject
     private async Task AboutAsync()
     {
         await _dialogs.InfoAsync("关于",
-            "Windows 智能安全卫士 (PC Security Center) v1.0.0\n\n" +
+            "Windows 智能安全卫士 (PC Security Center) v" +
+            (typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.2.0") + "\n\n" +
             "检测能力说明（如实声明）：\n" +
             "· 病毒检测依赖 Microsoft Defender 官方引擎与病毒库，本工具提供调度、结果展示与威胁处理；\n" +
             "· 智能风险引擎基于公开规则做可疑行为提示，不构成病毒判定；\n" +

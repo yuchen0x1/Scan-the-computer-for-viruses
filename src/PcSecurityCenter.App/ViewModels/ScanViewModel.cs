@@ -231,9 +231,11 @@ public partial class ScanViewModel : ObservableObject
             OnProgress(p);
         });
 
-        // 记录扫描历史
+        // 记录扫描历史。Id 必须与本次扫描的 RunId 一致，
+        // 否则威胁记录的 scan_run_id 永远匹配不到扫描记录（历史上正是如此）。
         var record = new ScanRunRecord
         {
+            Id = p.RunId == Guid.Empty ? Guid.NewGuid() : p.RunId,
             Type = p.Type,
             StartedAt = DateTime.Now - p.Elapsed,
             FinishedAt = DateTime.Now,
@@ -257,14 +259,17 @@ public partial class ScanViewModel : ObservableObject
             Detail = $"检查 {p.FilesScanned} 个文件，发现 {p.ThreatsFound} 项风险。",
         });
 
-        // 扫描后拉取 Defender 官方威胁记录（含原生扫描结果）
+        // 补充 Defender 原生扫描产生、且属于本次扫描时间窗口的记录。
+        // Get-MpThreatDetection 返回最近 30 天记录，不能把其中的历史项关联到当前 RunId。
         try
         {
+            var scanStartedAt = record.StartedAt.AddSeconds(-5);
             var dets = await _defender.GetThreatDetectionsAsync();
             foreach (var d in dets)
-                if (!Threats.Any(x => x.FilePath == d.FilePath && x.Engine == d.Engine))
+                if (d.DetectedAt >= scanStartedAt &&
+                    !Threats.Any(x => x.FilePath == d.FilePath && x.Engine == d.Engine))
                 {
-                    d.ScanRunId = null;
+                    d.ScanRunId = record.Id;
                     Threats.Insert(0, d);
                     _threatRepo.Upsert(d);
                 }
@@ -283,9 +288,17 @@ public partial class ScanViewModel : ObservableObject
     {
         if (param is not ThreatInfo t) return;
         var danger = t.Engine == "MicrosoftDefender";
+        // Defender 记录必须带威胁 ID 才能定点处理；没有 ID 时不能退化成"清除全部威胁"。
+        if (danger && (t.DefenderThreatId is null or <= 0))
+        {
+            await _dialogs.InfoAsync("无法处理该记录",
+                $"这条记录没有可用的 Defender 威胁 ID，本工具无法只处理它。\n\n文件：{t.FilePath}\n\n请在 Windows 安全中心（病毒和威胁防护 → 保护历史记录）中处理；若确认该文件无害，也可使用本工具的加密隔离区。");
+            return;
+        }
+
         var ok = await _dialogs.ConfirmAsync("隔离威胁",
             $"将隔离：{t.FilePath}\n\n" + (danger
-                ? "该威胁由 Microsoft Defender 检出，将通过 Defender 官方接口（Remove-MpThreat）执行隔离/清除。"
+                ? $"该威胁由 Microsoft Defender 检出（ThreatID {t.DefenderThreatId}），将通过 Defender 官方接口只处理这一条记录，其他威胁记录不受影响。"
                 : "该文件将移入本工具加密隔离区（AES-256），可随时恢复或彻底删除。"),
             "执行隔离", danger: true);
         if (!ok) return;
@@ -294,16 +307,16 @@ public partial class ScanViewModel : ObservableObject
         {
             if (danger)
             {
-                var r = await _defender.RemoveThreatsAsync();
+                var r = await _defender.RemoveThreatAsync(t.DefenderThreatId!.Value);
                 if (r)
                 {
                     t.Status = ThreatStatus.Quarantined;
                     _threatRepo.UpdateStatus(t.Id, ThreatStatus.Quarantined);
-                    await _dialogs.InfoAsync("威胁处理", "已通过 Defender 官方接口清除活动威胁。");
+                    await _dialogs.InfoAsync("威胁处理", $"已通过 Defender 官方接口处理威胁 {t.DefenderThreatId}。");
                 }
                 else
                 {
-                    await _dialogs.InfoAsync("威胁处理", "Defender 清除失败：威胁可能已被系统处理，或需要管理员权限。可打开 Windows 安全中心查看。");
+                    await _dialogs.InfoAsync("威胁处理", "Defender 处理失败：威胁可能已被系统处理，或需要管理员权限。可打开 Windows 安全中心查看。");
                 }
             }
             else

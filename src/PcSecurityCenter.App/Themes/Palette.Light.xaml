@@ -2,20 +2,20 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== 亮色（白天模式）调色板 ===== -->
-    <Color x:Key="ColorBgDeep">#EEF2F8</Color>
-    <Color x:Key="ColorBgMid">#F7F9FC</Color>
+    <Color x:Key="ColorBgDeep">#F0F4F5</Color>
+    <Color x:Key="ColorBgMid">#F6F9F9</Color>
     <Color x:Key="ColorCard">#FFFFFF</Color>
     <Color x:Key="ColorCardLight">#F4F7FB</Color>
-    <Color x:Key="ColorBorder">#D8E0EA</Color>
-    <Color x:Key="ColorBorderLight">#BFCBD9</Color>
-    <Color x:Key="ColorTextPrimary">#101828</Color>
-    <Color x:Key="ColorTextSecondary">#475467</Color>
-    <Color x:Key="ColorTextMuted">#667085</Color>
-    <Color x:Key="ColorAccent">#0E7490</Color>
-    <Color x:Key="ColorAccentBlue">#2563EB</Color>
-    <Color x:Key="ColorOk">#059669</Color>
-    <Color x:Key="ColorWarn">#B45309</Color>
-    <Color x:Key="ColorDanger">#DC2626</Color>
+    <Color x:Key="ColorBorder">#D8E1E4</Color>
+    <Color x:Key="ColorBorderLight">#BBCBD0</Color>
+    <Color x:Key="ColorTextPrimary">#172B38</Color>
+    <Color x:Key="ColorTextSecondary">#51636F</Color>
+    <Color x:Key="ColorTextMuted">#697B87</Color>
+    <Color x:Key="ColorAccent">#087F75</Color>
+    <Color x:Key="ColorAccentBlue">#2F6DB2</Color>
+    <Color x:Key="ColorOk">#17845D</Color>
+    <Color x:Key="ColorWarn">#965A00</Color>
+    <Color x:Key="ColorDanger">#B42318</Color>
     <Color x:Key="ColorPurple">#7C3AED</Color>
 
     <SolidColorBrush x:Key="BrushBgDeep" Color="{StaticResource ColorBgDeep}" />
@@ -35,18 +35,18 @@
     <SolidColorBrush x:Key="BrushPurple" Color="{StaticResource ColorPurple}" />
 
     <SolidColorBrush x:Key="BrushCardSolid" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="BrushCardSoft" Color="#FFF1F5F9" />
-    <SolidColorBrush x:Key="BrushCardHover" Color="#FFE2E8F0" />
-    <SolidColorBrush x:Key="BrushNavHover" Color="#FFE6EDF7" />
+    <SolidColorBrush x:Key="BrushCardSoft" Color="#FFF3F7F7" />
+    <SolidColorBrush x:Key="BrushCardHover" Color="#FFE8F0F1" />
+    <SolidColorBrush x:Key="BrushNavHover" Color="#FFE7EEEE" />
     <SolidColorBrush x:Key="BrushInputBg" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="BrushPopupBg" Color="#FFFFFFFF" />
     <SolidColorBrush x:Key="BrushTooltipBg" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="BrushScrollThumb" Color="#FFBFCBD9" />
+    <SolidColorBrush x:Key="BrushScrollThumb" Color="#FFBBCBD0" />
     <SolidColorBrush x:Key="BrushGridLine" Color="#FFE4EAF1" />
     <SolidColorBrush x:Key="BrushGridHeaderBorder" Color="#FFD8E0EA" />
     <SolidColorBrush x:Key="BrushRowAlt" Color="#FFF8FAFC" />
     <SolidColorBrush x:Key="BrushOverlay" Color="#FFF2F6FB" />
-    <SolidColorBrush x:Key="BrushNavBg" Color="#FFF6F8FC" />
+    <SolidColorBrush x:Key="BrushNavBg" Color="#FFF5F8F8" />
     <SolidColorBrush x:Key="BrushStatusPillBg" Color="#FFEFF3F9" />
     <SolidColorBrush x:Key="BrushDivider" Color="#FFE4EAF1" />
     <SolidColorBrush x:Key="BrushGridHeaderBg" Color="#FFEFF3F9" />
@@ -56,29 +56,13 @@
     <SolidColorBrush x:Key="BrushDialogOverlay" Color="#66000000" />
     <SolidColorBrush x:Key="BrushTrack" Color="#FFE2E8F0" />
 
-    <LinearGradientBrush x:Key="BrushWindowBg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#EEF2F8" Offset="0" />
-        <GradientStop Color="#FFFFFF" Offset="0.55" />
-        <GradientStop Color="#EEF2F8" Offset="1" />
-    </LinearGradientBrush>
+    <SolidColorBrush x:Key="BrushWindowBg" Color="#FFF0F4F5" />
+    <SolidColorBrush x:Key="BrushNavSelected" Color="#FFE1F0EE" />
+    <SolidColorBrush x:Key="BrushPrimaryButton" Color="#FF087F75" />
+    <SolidColorBrush x:Key="BrushGlowAccent" Color="#FF087F75" />
 
-    <LinearGradientBrush x:Key="BrushNavSelected" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#E3EDFF" Offset="0" />
-        <GradientStop Color="#D6E6FF" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="BrushPrimaryButton" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#0EA5E9" Offset="0" />
-        <GradientStop Color="#2563EB" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="BrushGlowAccent" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#0EA5E9" Offset="0" />
-        <GradientStop Color="#2563EB" Offset="1" />
-    </LinearGradientBrush>
-
-    <DropShadowEffect x:Key="CardShadow" BlurRadius="14" ShadowDepth="2" Opacity="0.10" Color="#1F2937" />
-    <DropShadowEffect x:Key="AccentShadow" BlurRadius="18" ShadowDepth="0" Opacity="0.28" Color="#0E7490" />
-    <DropShadowEffect x:Key="DangerShadow" BlurRadius="16" ShadowDepth="0" Opacity="0.22" Color="#DC2626" />
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="8" ShadowDepth="1" Opacity="0.05" Color="#243746" />
+    <DropShadowEffect x:Key="AccentShadow" BlurRadius="8" ShadowDepth="0" Opacity="0.12" Color="#087F75" />
+    <DropShadowEffect x:Key="DangerShadow" BlurRadius="8" ShadowDepth="0" Opacity="0.12" Color="#B42318" />
 
 </ResourceDictionary>

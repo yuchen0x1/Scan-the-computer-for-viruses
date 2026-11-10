@@ -1,17 +1,17 @@
 Windows 智能安全卫士 · 使用说明
 
-版本：1.1.0
-平台：Windows 10 / 11（x64）
+版本：1.2.0
+平台：Windows 10 2004 (build 19041) 及以上 / 11（x64）
 
 
 一、安装与启动
 
 安装版
-  运行 PcSecurityCenter-Setup-1.1.0.exe，按向导完成安装。
+  运行 PcSecurityCenter-Setup-1.2.0.exe，按向导完成安装。
   安装程序不会关闭系统防护、不会设置任何隐蔽开机自启。
 
 绿色便携版
-  解压 PcSecurityCenter-Portable-1.1.0.zip 到任意目录，
+  解压 PcSecurityCenter-Portable-1.2.0.zip 到任意目录，
   运行 PcSecurityCenter.App.exe。便携包为自包含部署，
   无需额外安装 .NET 运行时。
 

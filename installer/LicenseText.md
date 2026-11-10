@@ -1,4 +1,4 @@
-# Windows 智能安全卫士 (PC Security Center) 1.0.0
+# Windows 智能安全卫士 (PC Security Center) 1.2.0
 
 本软件按"现状"提供，不含任何形式的担保。安装即表示您理解并同意以下条款：
 

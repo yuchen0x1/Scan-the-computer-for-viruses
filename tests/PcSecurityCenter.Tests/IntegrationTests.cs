@@ -1,15 +1,59 @@
 using PcSecurityCenter.Data.Configuration;
 using PcSecurityCenter.Data.Database;
 using PcSecurityCenter.Data.Repositories;
+using PcSecurityCenter.Core.Abstractions;
 using PcSecurityCenter.Core.Models;
 using PcSecurityCenter.Core.Reporting;
 using PcSecurityCenter.Core.SecurityChecks;
 using PcSecurityCenter.Platform.Defender;
 using PcSecurityCenter.Platform.Security;
 using PcSecurityCenter.Platform.PowerShell;
+using PcSecurityCenter.Platform.Maintenance;
 using Xunit;
 
 namespace PcSecurityCenter.Tests;
+
+/// <summary>维护清理：调用方描述不能扩大服务允许的删除目录。</summary>
+public class MaintenanceCleanSafetyTests
+{
+    [Fact]
+    public async Task CleanAsync_UnknownIdWithForgedDirectory_DoesNotDeleteFiles()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"psc_clean_guard_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var marker = Path.Combine(dir, "keep.txt");
+        await File.WriteAllTextAsync(marker, "must remain");
+        try
+        {
+            var service = new WindowsMaintenanceService(new NoOpPermissionService());
+            await service.CleanAsync(new[]
+            {
+                new MaintenanceCleanItem
+                {
+                    Id = "caller-controlled",
+                    Name = "test",
+                    Description = $"forged（目录：{dir}）",
+                    RequiresAdmin = false,
+                },
+            });
+
+            Assert.True(File.Exists(marker));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private sealed class NoOpPermissionService : IPermissionService
+    {
+        public bool IsElevated => false;
+        public string ElevationHint => "test";
+        public Task<(bool Success, string Output)> RunElevatedAsync(
+            ElevatedOperation op, IReadOnlyDictionary<string, string>? args = null, CancellationToken ct = default)
+            => Task.FromResult((false, string.Empty));
+    }
+}
 
 /// <summary>SQLite 数据库：建库、写入、查询、迁移标记。</summary>
 public class AppDatabaseTests : IDisposable
@@ -450,7 +494,9 @@ public class QuarantineSecurityTests : IDisposable
         var vaultDir = Path.Combine(_baseDir, "k3");
         Directory.CreateDirectory(vaultDir);
         var rawKey = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
-        File.WriteAllBytes(Path.Combine(vaultDir, "vault.key"), rawKey); // v1.0.0 明文密钥
+        var keyPath = Path.Combine(vaultDir, "vault.key");
+        File.WriteAllBytes(keyPath, rawKey); // v1.0.0 明文密钥
+        File.SetAttributes(keyPath, File.GetAttributes(keyPath) | FileAttributes.Hidden); // 与用户现场一致
 
         var payload = new byte[1234];
         Random.Shared.NextBytes(payload);

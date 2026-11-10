@@ -2,9 +2,12 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- WFO0003：本应用为 WPF 主体，仅用 WinForms 承载托盘图标；
+         WPF 的 Per-Monitor V2 DPI 感知必须由 manifest 声明，故保留 manifest 并抑制该 WinForms 专用告警。 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <RootNamespace>PcSecurityCenter.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
@@ -27,7 +30,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.5" />
     <PackageReference Include="QuestPDF" Version="2025.7.0" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
   </ItemGroup>

@@ -120,8 +120,13 @@ public interface ISecurityEventService
 public interface IPermissionService
 {
     bool IsElevated { get; }
-    /// <summary>以管理员身份运行一段受白名单约束的操作脚本；返回 (成功, 输出)。</summary>
-    Task<(bool Success, string Output)> RunElevatedAsync(ElevatedOperation op, IReadOnlyDictionary<string, string>? args = null);
+    /// <summary>以管理员身份运行一段受白名单约束的操作脚本；返回 (成功, 输出)。
+    /// 只有确认子进程已获得管理员权限且脚本成功时才返回 true；用户取消 UAC、提权未生效、
+    /// 结果不可读等情况一律返回 false 并给出可解释原因。</summary>
+    Task<(bool Success, string Output)> RunElevatedAsync(
+        ElevatedOperation op,
+        IReadOnlyDictionary<string, string>? args = null,
+        CancellationToken ct = default);
     /// <summary>当前进程是否以管理员运行（用于 UI 提示）。</summary>
     string ElevationHint { get; }
 }

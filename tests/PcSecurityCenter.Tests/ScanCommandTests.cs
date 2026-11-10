@@ -72,11 +72,15 @@ public class ScanOrchestratorTests
         var completed = new TaskCompletionSource<ScanProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
         orchestrator.Completed += (_, p) => completed.TrySetResult(p);
 
-        await orchestrator.StartAsync(new ScanRequest { Type = ScanType.Quick });
+        // StartAsync owns the scan lifecycle and completes only when the scan ends.
+        // Keep its task in the background so cancellation can be requested while
+        // the operation is actually running.
+        var scanTask = orchestrator.StartAsync(new ScanRequest { Type = ScanType.Quick });
         await Task.Delay(3000);
         await orchestrator.CancelAsync();
 
-        var final = await completed.Task.WaitAsync(TimeSpan.FromMinutes(6));
+        await scanTask.WaitAsync(TimeSpan.FromMinutes(6));
+        var final = await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(final.State is ScanState.Cancelled or ScanState.Completed,
             $"取消后状态应为 Cancelled（或已完成），实际 {final.State}");
     }

@@ -16,10 +16,9 @@ public interface IDefenderClient
     Task<MpScanResult> ScanPathsAsync(IEnumerable<string> paths, CancellationToken ct);
     /// <summary>查询真实威胁检测记录。</summary>
     Task<List<ThreatInfo>> GetThreatDetectionsAsync(CancellationToken ct = default);
-    /// <summary>通过官方接口处理威胁（隔离/清除检测到的活动威胁）。</summary>
-    Task<bool> RemoveThreatsAsync(CancellationToken ct = default);
-    /// <summary>停止正在进行的引擎扫描（MSFT_MpScan.Stop / 进程终止）。</summary>
-    Task StopScanAsync(CancellationToken ct = default);
+    /// <summary>按 ThreatID 处理单条 Defender 威胁（隔离/清除）。
+    /// 只影响指定 ID 的记录，绝不触碰其他威胁；threatId 非法时直接返回 false。</summary>
+    Task<bool> RemoveThreatAsync(long threatId, CancellationToken ct = default);
     /// <summary>
     /// 流式逐目录扫描：从目录通道读取目录，逐个交给 Defender 引擎扫描，
     /// 每完成一个目录输出一条真实结果（文件数 + 新检出）。读取阻塞即引擎空闲，

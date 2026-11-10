@@ -80,8 +80,73 @@ public class QuarantineService : IQuarantineService
 
     private static void ProtectKeyFile(string keyPath, byte[] key)
     {
-        File.WriteAllBytes(keyPath, Dpapi.Protect(key));
-        try { File.SetAttributes(keyPath, FileAttributes.Hidden); } catch (Exception) { }
+        var directory = Path.GetDirectoryName(keyPath)!;
+        var tempPath = Path.Combine(directory, $"vault.key.{Guid.NewGuid():N}.tmp");
+        var backupPath = Path.Combine(directory, $"vault.key.{Guid.NewGuid():N}.bak");
+        var protectedKey = Dpapi.Protect(key);
+        var replacedExisting = false;
+        var preserveBackup = false;
+
+        try
+        {
+            // Write a new sibling file, then atomically replace the destination. File.WriteAllBytes
+            // uses CREATE_ALWAYS, which fails on Windows for an existing Hidden destination even
+            // when its ACL grants FullControl. File.Replace works with that attribute and avoids
+            // leaving a partially-written key if the process exits during migration.
+            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                       4096, FileOptions.WriteThrough))
+            {
+                stream.Write(protectedKey);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(keyPath))
+            {
+                File.Replace(tempPath, keyPath, backupPath);
+                replacedExisting = true;
+            }
+            else
+            {
+                File.Move(tempPath, keyPath);
+            }
+
+            var storedKey = Dpapi.Unprotect(File.ReadAllBytes(keyPath));
+            if (!CryptographicOperations.FixedTimeEquals(storedKey, key))
+                throw new CryptographicException("DPAPI 密钥写入后的校验失败");
+
+            try { File.SetAttributes(keyPath, FileAttributes.Hidden); } catch (Exception) { }
+        }
+        catch
+        {
+            // File.Replace keeps the old plaintext key as backup. If post-write validation fails,
+            // atomically restore it rather than risking loss of access to existing quarantine data.
+            if (replacedExisting && File.Exists(backupPath))
+            {
+                try { File.Replace(backupPath, keyPath, tempPath); }
+                catch (Exception ex)
+                {
+                    preserveBackup = true;
+                    Serilog.Log.Error(ex, "隔离区密钥迁移回滚失败；旧密钥备份保留于 {Backup}", backupPath);
+                }
+            }
+            throw;
+        }
+        finally
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (Exception) { }
+            if (replacedExisting && !preserveBackup && File.Exists(backupPath))
+            {
+                try
+                {
+                    File.SetAttributes(backupPath, FileAttributes.Normal);
+                    File.Delete(backupPath);
+                }
+                catch (Exception ex)
+                {
+                    Serilog.Log.Warning(ex, "隔离区旧密钥备份无法删除：{Backup}", backupPath);
+                }
+            }
+        }
     }
 
     private List<QuarantineRecord> LoadRecords()

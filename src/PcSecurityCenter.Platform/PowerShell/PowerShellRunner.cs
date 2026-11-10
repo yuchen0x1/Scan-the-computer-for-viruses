@@ -95,6 +95,10 @@ public static class PowerShellRunner
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(timeoutMs);
             await proc.WaitForExitAsync(timeoutCts.Token);
+            // WaitForExitAsync only waits for process termination. The event based
+            // stdout/stderr readers may still be draining their final lines, so
+            // perform the synchronous flush before reading the buffers.
+            proc.WaitForExit();
             return new PsResult
             {
                 Success = proc.ExitCode == 0,

@@ -167,23 +167,30 @@ try { Start-MpScan -ScanType QuickScan -ErrorAction Stop; 'SCANDONE' } catch { '
         return r.StdOut.Contains("SCANDONE");
     }
 
-    public async Task<bool> RemoveThreatsAsync(CancellationToken ct = default)
+    /// <summary>
+    /// 按 ThreatID 定点处理一条 Defender 威胁（隔离/清除）。
+    ///
+    /// 安全要点：不带 -ThreatID 的 Remove-MpThreat 会清除**全部**活动威胁，
+    /// 相当于用户在列表里点一条记录却清空了整台机器的检测记录。因此这里强制要求
+    /// 合法的威胁 ID，任何非数字输入都在进入脚本前被拒绝。
+    /// </summary>
+    public async Task<bool> RemoveThreatAsync(long threatId, CancellationToken ct = default)
     {
-        const string script = """
-try { Remove-MpThreat -ErrorAction Stop; 'REMOVED' } catch { 'FAIL: ' + $_.Exception.Message }
-""";
-        var r = await PowerShellRunner.RunAsync(script, timeoutMs: 300_000, ct: ct);
-        return r.StdOut.Contains("REMOVED");
-    }
+        if (threatId <= 0) return false;
 
-    public async Task StopScanAsync(CancellationToken ct = default)
-    {
         const string script = """
-try { $s = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpScan -ErrorAction Stop; $s | ForEach-Object { $_.Stop() } } catch { }
-try { Get-Process MpCmdRun -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
-'OK'
+$tidText = $env:PSC_THREATID
+$tid = [int64]0
+if (-not [int64]::TryParse($tidText, [ref]$tid)) { 'FAIL: 非法的威胁 ID'; exit 0 }
+try {
+  Remove-MpThreat -ThreatID $tid -ErrorAction Stop
+  'REMOVED'
+} catch { 'FAIL: ' + $_.Exception.Message }
 """;
-        await PowerShellRunner.RunAsync(script, timeoutMs: 30_000, ct: ct);
+        var r = await PowerShellRunner.RunAsync(script,
+            new Dictionary<string, string> { ["threatid"] = threatId.ToString() },
+            timeoutMs: 300_000, ct: ct);
+        return r.StdOut.Contains("REMOVED");
     }
 
     // ---------------- MpCmdRun 定向扫描 ----------------
@@ -269,7 +276,10 @@ while ($true) {
   $ok = $true; $err = ''
   try { Start-MpScan -ScanType CustomScan -ScanPath $line -ErrorAction Stop } catch { $ok = $false; $err = $_.Exception.Message }
   $files = 0
-  try { $files = @(Get-ChildItem -LiteralPath $line -Recurse -File -Force -ErrorAction SilentlyContinue).Count } catch { }
+  try {
+    if (Test-Path -LiteralPath $line -PathType Leaf) { $files = 1 }
+    else { $files = @(Get-ChildItem -LiteralPath $line -Recurse -File -Force -ErrorAction SilentlyContinue).Count }
+  } catch { }
   $dets = @()
   try {
     $dets = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object { $_.InitialDetectionTime -ge $t0 })

@@ -79,6 +79,8 @@ public enum ScanState
 /// <summary>扫描进度快照（UI 绑定用）。</summary>
 public class ScanProgress
 {
+    /// <summary>本次扫描的唯一标识。威胁记录、扫描记录都使用它，便于按扫描归档与交叉校验。</summary>
+    public Guid RunId { get; set; }
     public ScanState State { get; set; } = ScanState.Idle;
     public ScanType Type { get; set; }
     public string CurrentItem { get; set; } = string.Empty;

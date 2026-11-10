@@ -2,20 +2,20 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ===== 暗色（夜间模式）调色板 ===== -->
-    <Color x:Key="ColorBgDeep">#0A0E1A</Color>
-    <Color x:Key="ColorBgMid">#0E1526</Color>
-    <Color x:Key="ColorCard">#131A2E</Color>
-    <Color x:Key="ColorCardLight">#182138</Color>
-    <Color x:Key="ColorBorder">#263248</Color>
-    <Color x:Key="ColorBorderLight">#33436B</Color>
-    <Color x:Key="ColorTextPrimary">#E2E8F0</Color>
-    <Color x:Key="ColorTextSecondary">#94A3B8</Color>
-    <Color x:Key="ColorTextMuted">#64748B</Color>
-    <Color x:Key="ColorAccent">#22D3EE</Color>
-    <Color x:Key="ColorAccentBlue">#3B82F6</Color>
-    <Color x:Key="ColorOk">#34D399</Color>
-    <Color x:Key="ColorWarn">#FBBF24</Color>
-    <Color x:Key="ColorDanger">#F87171</Color>
+    <Color x:Key="ColorBgDeep">#101821</Color>
+    <Color x:Key="ColorBgMid">#141F29</Color>
+    <Color x:Key="ColorCard">#19252F</Color>
+    <Color x:Key="ColorCardLight">#202E38</Color>
+    <Color x:Key="ColorBorder">#2C3B45</Color>
+    <Color x:Key="ColorBorderLight">#3C4D57</Color>
+    <Color x:Key="ColorTextPrimary">#E7EEF2</Color>
+    <Color x:Key="ColorTextSecondary">#B2C0C8</Color>
+    <Color x:Key="ColorTextMuted">#8697A2</Color>
+    <Color x:Key="ColorAccent">#53C6B5</Color>
+    <Color x:Key="ColorAccentBlue">#66A9F5</Color>
+    <Color x:Key="ColorOk">#48B789</Color>
+    <Color x:Key="ColorWarn">#F1B25B</Color>
+    <Color x:Key="ColorDanger">#F27B78</Color>
     <Color x:Key="ColorPurple">#A78BFA</Color>
 
     <SolidColorBrush x:Key="BrushBgDeep" Color="{StaticResource ColorBgDeep}" />
@@ -34,51 +34,35 @@
     <SolidColorBrush x:Key="BrushDanger" Color="{StaticResource ColorDanger}" />
     <SolidColorBrush x:Key="BrushPurple" Color="{StaticResource ColorPurple}" />
 
-    <SolidColorBrush x:Key="BrushCardSolid" Color="#CC131A2E" />
-    <SolidColorBrush x:Key="BrushCardSoft" Color="#66182138" />
-    <SolidColorBrush x:Key="BrushCardHover" Color="#551E2A44" />
-    <SolidColorBrush x:Key="BrushNavHover" Color="#221E2A44" />
-    <SolidColorBrush x:Key="BrushInputBg" Color="#33101830" />
-    <SolidColorBrush x:Key="BrushPopupBg" Color="#F5131A2E" />
-    <SolidColorBrush x:Key="BrushTooltipBg" Color="#F5182138" />
-    <SolidColorBrush x:Key="BrushScrollThumb" Color="#55263248" />
-    <SolidColorBrush x:Key="BrushGridLine" Color="#33263248" />
-    <SolidColorBrush x:Key="BrushGridHeaderBorder" Color="#44263248" />
-    <SolidColorBrush x:Key="BrushRowAlt" Color="#22101830" />
-    <SolidColorBrush x:Key="BrushOverlay" Color="#B90C1122" />
-    <SolidColorBrush x:Key="BrushNavBg" Color="#A80A0F1F" />
-    <SolidColorBrush x:Key="BrushStatusPillBg" Color="#22101830" />
-    <SolidColorBrush x:Key="BrushDivider" Color="#33263248" />
-    <SolidColorBrush x:Key="BrushGridHeaderBg" Color="#33182138" />
-    <SolidColorBrush x:Key="BrushDangerBorder" Color="#88F87171" />
-    <SolidColorBrush x:Key="BrushAccentSoft" Color="#3322D3EE" />
-    <SolidColorBrush x:Key="BrushAccentMedium" Color="#5522D3EE" />
+    <SolidColorBrush x:Key="BrushCardSolid" Color="#FF19252F" />
+    <SolidColorBrush x:Key="BrushCardSoft" Color="#FF202E38" />
+    <SolidColorBrush x:Key="BrushCardHover" Color="#FF293943" />
+    <SolidColorBrush x:Key="BrushNavHover" Color="#332C3B45" />
+    <SolidColorBrush x:Key="BrushInputBg" Color="#FF141F29" />
+    <SolidColorBrush x:Key="BrushPopupBg" Color="#FF19252F" />
+    <SolidColorBrush x:Key="BrushTooltipBg" Color="#FF202E38" />
+    <SolidColorBrush x:Key="BrushScrollThumb" Color="#FF3C4D57" />
+    <SolidColorBrush x:Key="BrushGridLine" Color="#332C3B45" />
+    <SolidColorBrush x:Key="BrushGridHeaderBorder" Color="#442C3B45" />
+    <SolidColorBrush x:Key="BrushRowAlt" Color="#FF1C2933" />
+    <SolidColorBrush x:Key="BrushOverlay" Color="#FF121C25" />
+    <SolidColorBrush x:Key="BrushNavBg" Color="#FF121C25" />
+    <SolidColorBrush x:Key="BrushStatusPillBg" Color="#FF202E38" />
+    <SolidColorBrush x:Key="BrushDivider" Color="#332C3B45" />
+    <SolidColorBrush x:Key="BrushGridHeaderBg" Color="#FF202E38" />
+    <SolidColorBrush x:Key="BrushDangerBorder" Color="#88F27B78" />
+    <SolidColorBrush x:Key="BrushAccentSoft" Color="#2253C6B5" />
+    <SolidColorBrush x:Key="BrushAccentMedium" Color="#3353C6B5" />
     <SolidColorBrush x:Key="BrushDialogOverlay" Color="#88040918" />
-    <SolidColorBrush x:Key="BrushTrack" Color="#33263248" />
+    <SolidColorBrush x:Key="BrushTrack" Color="#FF2C3B45" />
 
-    <LinearGradientBrush x:Key="BrushWindowBg" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#0A0E1A" Offset="0" />
-        <GradientStop Color="#0E1530" Offset="0.55" />
-        <GradientStop Color="#0A0E1A" Offset="1" />
-    </LinearGradientBrush>
+    <SolidColorBrush x:Key="BrushWindowBg" Color="#FF101821" />
+    <SolidColorBrush x:Key="BrushNavSelected" Color="#FF203A3A" />
+    <SolidColorBrush x:Key="BrushPrimaryButton" Color="#FF087F75" />
+    <SolidColorBrush x:Key="BrushGlowAccent" Color="#FF53C6B5" />
 
-    <LinearGradientBrush x:Key="BrushNavSelected" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#142B45" Offset="0" />
-        <GradientStop Color="#0F2338" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="BrushPrimaryButton" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#0EA5E9" Offset="0" />
-        <GradientStop Color="#2563EB" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="BrushGlowAccent" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#22D3EE" Offset="0" />
-        <GradientStop Color="#3B82F6" Offset="1" />
-    </LinearGradientBrush>
-
-    <DropShadowEffect x:Key="CardShadow" BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="#000000" />
-    <DropShadowEffect x:Key="AccentShadow" BlurRadius="22" ShadowDepth="0" Opacity="0.55" Color="#22D3EE" />
-    <DropShadowEffect x:Key="DangerShadow" BlurRadius="18" ShadowDepth="0" Opacity="0.40" Color="#F87171" />
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="10" ShadowDepth="1" Opacity="0.18" Color="#000000" />
+    <DropShadowEffect x:Key="AccentShadow" BlurRadius="8" ShadowDepth="0" Opacity="0.18" Color="#53C6B5" />
+    <DropShadowEffect x:Key="DangerShadow" BlurRadius="8" ShadowDepth="0" Opacity="0.18" Color="#F27B78" />
 
 </ResourceDictionary>

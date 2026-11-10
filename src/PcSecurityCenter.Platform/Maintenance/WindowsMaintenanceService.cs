@@ -126,18 +126,24 @@ if ($rb) {
     public async Task<(long FreedBytes, int FilesRemoved)> CleanAsync(IEnumerable<MaintenanceCleanItem> items, CancellationToken ct = default)
     {
         long freed = 0; int removed = 0;
+        var selected = items.ToList();
 
-        var ordinary = items.Where(i => !i.RequiresAdmin && i.Id != "recycle-bin").ToList();
-        foreach (var item in ordinary)
+        // Never trust the UI description as an executable path. Rebuild every
+        // deletion target from a narrow service-owned ID allowlist and reapply
+        // the same age policy used by the preview.
+        foreach (var item in selected.Where(i => !i.RequiresAdmin && i.Id != "recycle-bin"))
         {
-            var dir = ExtractDir(item.Description);
-            if (dir == null) continue;
-            var (f, n) = CleanDirectoryFiles(dir, ct);
+            var target = GetCleanTarget(item.Id);
+            if (target == null || !Directory.Exists(target.Value.Directory)) continue;
+            var cutoff = target.Value.OlderThanDays > 0
+                ? DateTime.Now.AddDays(-target.Value.OlderThanDays)
+                : DateTime.MinValue;
+            var (f, n) = CleanDirectoryFiles(target.Value.Directory, cutoff, ct);
             freed += f; removed += n;
         }
 
         // 回收站
-        if (items.Any(i => i.Id == "recycle-bin"))
+        if (selected.Any(i => i.Id == "recycle-bin"))
         {
             const string script = "try { Clear-RecycleBin -Force -ErrorAction Stop; 'RB_OK' } catch { 'RB_FAIL: ' + $_.Exception.Message }";
             var r = await PcSecurityCenter.Platform.PowerShell.PowerShellRunner.RunAsync(script, timeoutMs: 120_000, ct: ct);
@@ -145,7 +151,7 @@ if ($rb) {
         }
 
         // 需要管理员的项目：提示（UI 层引导提权流程）
-        if (items.Any(i => i.RequiresAdmin))
+        if (selected.Any(i => i.RequiresAdmin))
         {
             Serilog.Log.Information("存在需要管理员权限的清理项，由 UI 引导用户提权执行");
         }
@@ -153,7 +159,17 @@ if ($rb) {
     }
 
     /// <summary>逐文件清理：只删普通文件，跳过使用中/系统/只读可疑文件；不删除目录本身。</summary>
-    private static (long freed, int removed) CleanDirectoryFiles(string dir, CancellationToken ct)
+    private static (string Directory, int OlderThanDays)? GetCleanTarget(string id) => id switch
+    {
+        "user-temp" => (Path.GetTempPath(), 7),
+        "user-localappdata-temp" => (Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"), 7),
+        "wer" => (Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "Windows", "WER", "ReportQueue"), 0),
+        _ => null,
+    };
+
+    private static (long freed, int removed) CleanDirectoryFiles(string dir, DateTime cutoff, CancellationToken ct)
     {
         long freed = 0; int removed = 0;
         foreach (var f in FileEnumerator.EnumerateFiles(dir, ct))
@@ -163,6 +179,7 @@ if ($rb) {
             try
             {
                 var fi = new FileInfo(f);
+                if (fi.LastWriteTime > cutoff) continue;
                 // 跳过使用中的文件
                 using (var s = fi.Open(FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
                 var size = fi.Length;
@@ -175,14 +192,6 @@ if ($rb) {
         }
         Serilog.Log.Information("清理目录 {Dir}：删除 {N} 个文件，释放 {Bytes}", dir, removed, freed);
         return (freed, removed);
-    }
-
-    private static string? ExtractDir(string description)
-    {
-        var i = description.IndexOf("目录：", StringComparison.Ordinal);
-        if (i < 0) return null;
-        var rest = description[(i + 3)..].TrimEnd('）', ')');
-        return PathSafety.NormalizeAbsolute(rest);
     }
 
     // ---------------- 磁盘空间分析 ----------------
@@ -216,13 +225,14 @@ if ($rb) {
 
     // ---------------- SFC / DISM / chkdsk（提权） ----------------
     public Task<(bool Success, string Output)> RunSfcVerifyAsync(CancellationToken ct = default) =>
-        _permission.RunElevatedAsync(ElevatedOperation.RunSfcVerifyOnly);
+        _permission.RunElevatedAsync(ElevatedOperation.RunSfcVerifyOnly, ct: ct);
 
     public Task<(bool Success, string Output)> RunDismScanHealthAsync(CancellationToken ct = default) =>
-        _permission.RunElevatedAsync(ElevatedOperation.RunDismScanHealth);
+        _permission.RunElevatedAsync(ElevatedOperation.RunDismScanHealth, ct: ct);
 
     public Task<(bool Success, string Output)> RunChkdskReadOnlyAsync(string drive, CancellationToken ct = default) =>
-        _permission.RunElevatedAsync(ElevatedOperation.RunChkdskReadOnly, new Dictionary<string, string> { ["drive"] = drive });
+        _permission.RunElevatedAsync(ElevatedOperation.RunChkdskReadOnly,
+            new Dictionary<string, string> { ["drive"] = drive }, ct);
 
     // ---------------- 还原点 ----------------
     public async Task<List<RestorePointInfo>> GetRestorePointsAsync(CancellationToken ct = default)
@@ -266,5 +276,6 @@ try {
     }
 
     public Task<(bool Success, string Output)> CreateRestorePointAsync(string description, CancellationToken ct = default) =>
-        _permission.RunElevatedAsync(ElevatedOperation.CreateRestorePoint, new Dictionary<string, string> { ["desc"] = description });
+        _permission.RunElevatedAsync(ElevatedOperation.CreateRestorePoint,
+            new Dictionary<string, string> { ["desc"] = description }, ct);
 }
