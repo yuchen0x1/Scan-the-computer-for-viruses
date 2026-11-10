@@ -76,8 +76,8 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 ## 安装、更新与发布
 
 ### 安装包
-- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.1.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
-- 免安装便携版：`PcSecurityCenter-Portable-1.2.1.zip`，解压即用。
+- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.2.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`PcSecurityCenter-Portable-1.2.2.zip`，解压即用。
 - 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
 - 自 1.2.0 起要求 **Windows 10 2004 (build 19041) 及以上**（x64）；Windows 10 1809/1909 不再支持。
 - 每个 Release 附带 `SHA256SUMS.txt`，可自行校验下载产物完整性。
@@ -99,11 +99,11 @@ pwsh publish.ps1
 # 1) 自包含发布
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 2) 便携版 zip
-Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.1.zip
+Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.2.zip
 # 3) 安装包（需 Inno Setup 6）
-iscc /DAppVersion=1.2.1 installer/PcSecurityCenter.iss
+iscc /DAppVersion=1.2.2 installer/PcSecurityCenter.iss
 # 4) 创建 GitHub Release 并上传安装包、便携版与 SHA256SUMS
-gh release create v1.2.1 -t "Windows 智能安全卫士 v1.2.1" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.1.exe publish/PcSecurityCenter-Portable-1.2.1.zip publish/SHA256SUMS.txt
+gh release create v1.2.2 -t "Windows 智能安全卫士 v1.2.2" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.2.exe publish/PcSecurityCenter-Portable-1.2.2.zip publish/SHA256SUMS.txt
 ```
 
 ## Star History

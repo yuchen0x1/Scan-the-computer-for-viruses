@@ -115,7 +115,10 @@ public partial class NetworkViewModel : ObservableObject, IPageActivatable
 {
     private readonly INetworkMonitor _network;
     private readonly IDialogService _dialogs;
+    private readonly INotificationService _notifications;
     private System.Timers.Timer? _trafficTimer;
+    // 会话内记住上次代理状态：仅在状态变化时提示，避免常开代理的用户每次进页都被弹窗打扰
+    private string? _lastProxyKey;
 
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private string _trafficText = "…";
@@ -129,10 +132,11 @@ public partial class NetworkViewModel : ObservableObject, IPageActivatable
     public ObservableCollection<FirewallProfileInfo> FirewallProfiles { get; } = new();
     public ObservableCollection<string> NonLocalHostsRedirects { get; } = new();
 
-    public NetworkViewModel(INetworkMonitor network, IDialogService dialogs)
+    public NetworkViewModel(INetworkMonitor network, IDialogService dialogs, INotificationService notifications)
     {
         _network = network;
         _dialogs = dialogs;
+        _notifications = notifications;
         // 流量定时器：默认不启动；离开本页即停，避免后台空转消耗 CPU
         _trafficTimer = new System.Timers.Timer(2000) { AutoReset = true };
         _trafficTimer.Elapsed += (_, _) => _ = UpdateTrafficAsync();
@@ -148,9 +152,14 @@ public partial class NetworkViewModel : ObservableObject, IPageActivatable
         try
         {
             var t = await _network.GetTotalTrafficSampleAsync();
-            if (Application.Current?.MainWindow is { } w && w.WindowState == WindowState.Minimized) return;
-            Ui.Post(() => TrafficText =
-                $"↓ {PcSecurityCenter.Core.Utils.SizeFormat.Format((long)t.DownloadBytesPerSec)}/s   ↑ {PcSecurityCenter.Core.Utils.SizeFormat.Format((long)t.UploadBytesPerSec)}/s");
+            // 采样回调在计时器线程：不能直接读 WindowState（WPF 对象有线程亲和性，
+            // 跨线程访问会抛异常并被吞掉，网速文本将永远不更新）。
+            Ui.Post(() =>
+            {
+                if (Application.Current?.MainWindow is { } w && w.WindowState == WindowState.Minimized) return;
+                TrafficText =
+                    $"↓ {PcSecurityCenter.Core.Utils.SizeFormat.Format((long)t.DownloadBytesPerSec)}/s   ↑ {PcSecurityCenter.Core.Utils.SizeFormat.Format((long)t.UploadBytesPerSec)}/s";
+            });
         }
         catch (Exception) { }
     }
@@ -182,8 +191,18 @@ public partial class NetworkViewModel : ObservableObject, IPageActivatable
                       : $"{Environment.NewLine}例外：{proxy.ProxyOverride.Replace(";", "; ")}") +
                   $"{Environment.NewLine}若非本人设置，请立即检查！"
                 : "未启用系统代理";
-            if (proxy.ProxyEnabled)
-                await _dialogs.InfoAsync("代理配置提醒", $"检测到系统代理已启用：{proxy.ProxyServer}\n\n恶意软件常通过代理劫持流量。若非本人设置，请到 设置→网络→代理 中关闭并排查。");
+            // 不再用模态弹窗提醒代理状态（常开代理的用户每次进页都会被打断）；
+            // 代理信息已在上图卡片常驻展示，这里只在状态发生变化时给一条可自动消失的 Toast。
+            var proxyKey = proxy.ProxyEnabled ? proxy.ProxyServer : "";
+            if (_lastProxyKey is { } prev && proxyKey != prev)
+            {
+                var before = prev.Length == 0 ? "未启用" : prev;
+                var after = proxyKey.Length == 0 ? "未启用" : proxy.ProxyServer;
+                _notifications.Notify("系统代理变更",
+                    $"检测到系统代理变更：{before} → {after}。若非本人操作，请到 设置→网络→代理 关闭并排查。",
+                    ThreatSeverity.Medium);
+            }
+            _lastProxyKey = proxyKey;
 
             var hosts = await _network.InspectHostsFileAsync();
             Ui.Post(() =>

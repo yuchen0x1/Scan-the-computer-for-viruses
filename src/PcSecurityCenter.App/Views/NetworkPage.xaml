@@ -14,7 +14,8 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 连接列表 -->
-                <Border Grid.Column="0" Style="{StaticResource SectionCard}">
+                <!-- Top 对齐：不随右列三张卡的总高度拉伸，否则表格下方会留出大片卡片空白 -->
+                <Border Grid.Column="0" Style="{StaticResource SectionCard}" VerticalAlignment="Top">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,8">
                             <TextBlock Text="TCP 连接（进程关联）" FontWeight="Bold" VerticalAlignment="Center" />
@@ -41,7 +42,7 @@
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="状态" Binding="{Binding State}" Width="58">
+                                <DataGridTextColumn Header="状态" Binding="{Binding State}" Width="88">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="ToolTip" Value="{Binding State}" />
