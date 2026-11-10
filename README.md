@@ -52,7 +52,7 @@
 ## 构建与运行
 
 ```bash
-# 需要 .NET 10 SDK（本机安装于 C:\Users\lenmo\dotnet-setup\sdk10）
+# 需要 .NET 10 SDK
 dotnet build PcSecurityCenter.slnx
 dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release     # 运行全部自动化测试
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
