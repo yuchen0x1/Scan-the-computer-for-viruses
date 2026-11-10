@@ -53,17 +53,23 @@ public partial class UpdateViewModel : ObservableObject
         IsBusy = s is UpdateState.Checking or UpdateState.Downloading or UpdateState.Applying;
         IsDownloading = s == UpdateState.Downloading;
         CanCheck = !IsBusy;
-        CanDownload = s == UpdateState.Available;
+        CanDownload = s == UpdateState.Available && _updater.ReleaseCacheNote is null;
         CanApply = s == UpdateState.Ready;
         if (_updater.LastChecked is { } t)
             LastCheckedText = t.ToString("yyyy-MM-dd HH:mm");
+        else if (_updater.ReleaseCacheNote is { } cacheNote)
+            LastCheckedText = cacheNote;
 
         StatusText = s switch
         {
             UpdateState.Idle => "点击「检查更新」开始检测",
             UpdateState.Checking => "正在检测更新…",
-            UpdateState.UpToDate => $"已是最新版本（v{_updater.CurrentVersion.ToString(3)}）",
-            UpdateState.Available => $"发现新版本 v{_updater.LatestRelease?.Version}，可更新",
+            UpdateState.UpToDate => _updater.ReleaseCacheNote is { } cachedUpToDate
+                ? $"缓存结果：{cachedUpToDate}"
+                : $"已是最新版本（v{_updater.CurrentVersion.ToString(3)}）",
+            UpdateState.Available => _updater.ReleaseCacheNote is { } cachedUpdate
+                ? $"缓存发现新版本 v{_updater.LatestRelease?.Version}（{cachedUpdate}）；请联网后重新检查以确认并下载。"
+                : $"发现新版本 v{_updater.LatestRelease?.Version}，可更新",
             UpdateState.Downloading => $"正在下载更新包… {DownloadProgress}%",
             UpdateState.Ready => "更新包已下载，点击「立即更新」重启以完成升级",
             UpdateState.Applying => "正在应用更新，应用即将重启…",
@@ -76,9 +82,9 @@ public partial class UpdateViewModel : ObservableObject
     private async Task CheckAsync()
     {
         if (!CanCheck) return;
-        var result = await _updater.CheckAsync();
-        // 检测到新版本后自动开始下载，减少用户操作步骤。
-        if (result.IsUpdateAvailable)
+        var result = await _updater.CheckAsync(forceRefresh: true);
+        // 实时检查确认有新版本后自动下载；缓存结果仅供参考，避免仅凭旧数据启动升级。
+        if (result.IsUpdateAvailable && !result.IsFromCache)
             await _updater.DownloadAsync();
     }
 

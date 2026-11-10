@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Text.Json;
 using PcSecurityCenter.Core.Update;
 using PcSecurityCenter.Platform.Security;
 
@@ -23,6 +25,7 @@ public enum UpdateState
 public sealed class UpdateCheckResult
 {
     public bool IsUpdateAvailable { get; init; }
+    public bool IsFromCache { get; init; }
     public ReleaseInfo? Latest { get; init; }
     public string? Error { get; init; }
 }
@@ -35,13 +38,21 @@ public sealed class UpdateCheckResult
 public sealed class UpdaterService
 {
     // 公开仓库的 Releases API（无需鉴权；调用方机器需可访问 github.com）。
-    private const string ApiLatest = "https://api.github.com/repos/yuchen0x1/Scan-the-computer-for-viruses/releases/latest";
     private const string ApiReleases = "https://api.github.com/repos/yuchen0x1/Scan-the-computer-for-viruses/releases?per_page=10";
 
     private readonly HttpClient _http;
     // 下载走独立 HttpClient：大文件流式读取由下方分阶段超时控制，不能被 20s 全局超时掐断。
     private readonly HttpClient _downloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
     private readonly string _downloadDir;
+    private readonly string _releaseCachePath;
+    private readonly SemaphoreSlim _releaseGate = new(1, 1);
+    private readonly object _releaseSync = new();
+    private List<ReleaseInfo> _cachedReleases = new();
+    private string? _releasesEtag;
+    private DateTime _releasesFetchedAt;
+    private Task<List<ReleaseInfo>>? _releaseFetchTask;
+    private string? _releaseCacheNote;
+    private static readonly TimeSpan ReleaseCacheLifetime = TimeSpan.FromMinutes(10);
 
     public Version CurrentVersion { get; }
 
@@ -60,6 +71,7 @@ public sealed class UpdaterService
     public ReleaseInfo? LatestRelease { get; private set; }
     public string? LastError { get; private set; }
     public DateTime? LastChecked { get; private set; }
+    public string? ReleaseCacheNote => _releaseCacheNote;
     public string? DownloadedPath { get; private set; }
     /// <summary>下载完成并通过校验的安装包 SHA256（应用前会再次比对防替换）。</summary>
     public string? VerifiedSha256 { get; private set; }
@@ -72,6 +84,9 @@ public sealed class UpdaterService
     {
         CurrentVersion = typeof(UpdaterService).Assembly.GetName().Version ?? new Version(1, 0, 0, 0);
         _downloadDir = Path.Combine(Path.GetTempPath(), "PcSecurityCenterUpdates");
+        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PcSecurityCenter", "Cache");
+        _releaseCachePath = Path.Combine(cacheDir, "github-releases.json");
+        LoadReleaseCache();
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         // GitHub API 要求必须携带 User-Agent，否则返回 403。
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("PcSecurityCenter-App");
@@ -79,34 +94,32 @@ public sealed class UpdaterService
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
 
-    /// <summary>检测是否有新版本。网络异常时返回 IsUpdateAvailable=false 且不抛异常。</summary>
-    public async Task<UpdateCheckResult> CheckAsync()
+    /// <summary>检测是否有新版本。网络异常时使用最近缓存并明确标注缓存来源；无缓存时返回错误。</summary>
+    public async Task<UpdateCheckResult> CheckAsync(bool forceRefresh = false)
     {
         State = UpdateState.Checking;
         LastError = null;
         try
         {
-            var json = await _http.GetStringAsync(ApiLatest);
-            var releases = ReleaseParser.ParseReleases(json);
+            var wasFresh = !forceRefresh && _cachedReleases.Count > 0 && DateTime.UtcNow - _releasesFetchedAt < ReleaseCacheLifetime;
+            var releases = await GetReleasesAsync(forceRefresh);
+            var isFromCache = wasFresh || _releaseCacheNote != null;
             var latest = releases.FirstOrDefault(r => !r.Draft && !r.Prerelease);
-            LastChecked = DateTime.Now;
             if (latest is null)
             {
+                if (_releaseCacheNote != null) throw new InvalidDataException("缓存中没有可用的正式版本");
+                if (!isFromCache) LastChecked = DateTime.Now;
                 State = UpdateState.UpToDate;
-                return new UpdateCheckResult { IsUpdateAvailable = false };
+                return new UpdateCheckResult { IsUpdateAvailable = false, IsFromCache = isFromCache };
             }
 
-            var latestVer = VersionUtility.ParseVersion(latest.Version) ?? new Version(0, 0, 0, 0);
-            var cmp = VersionUtility.Compare(CurrentVersion, latestVer);
+            var latestVer = VersionUtility.ParseVersion(latest.Version);
+            if (latestVer is null) throw new InvalidDataException($"GitHub Release 版本号无效：{latest.Version}");
             LatestRelease = latest;
-            if (cmp < 0)
-            {
-                State = UpdateState.Available;
-                return new UpdateCheckResult { IsUpdateAvailable = true, Latest = latest };
-            }
-
-            State = UpdateState.UpToDate;
-            return new UpdateCheckResult { IsUpdateAvailable = false };
+            var isUpdateAvailable = VersionUtility.Compare(CurrentVersion, latestVer) < 0;
+            if (!isFromCache) LastChecked = DateTime.Now;
+            State = isUpdateAvailable ? UpdateState.Available : UpdateState.UpToDate;
+            return new UpdateCheckResult { IsUpdateAvailable = isUpdateAvailable, IsFromCache = isFromCache, Latest = latest };
         }
         catch (Exception ex)
         {
@@ -122,8 +135,7 @@ public sealed class UpdaterService
     {
         try
         {
-            var json = await _http.GetStringAsync(ApiReleases);
-            return ReleaseParser.ParseReleases(json)
+            return (await GetReleasesAsync())
                 .Where(r => !r.Draft && !r.Prerelease)
                 .ToList();
         }
@@ -132,6 +144,112 @@ public sealed class UpdaterService
             Serilog.Log.Warning(ex, "更新日志拉取失败");
             return new List<ReleaseInfo>();
         }
+    }
+
+    private async Task<List<ReleaseInfo>> GetReleasesAsync(bool forceRefresh = false)
+    {
+        Task<List<ReleaseInfo>> fetchTask;
+        lock (_releaseSync)
+        {
+            if (!forceRefresh && _cachedReleases.Count > 0 && DateTime.UtcNow - _releasesFetchedAt < ReleaseCacheLifetime)
+            {
+                _releaseCacheNote = $"复用 {_releasesFetchedAt.ToLocalTime():yyyy-MM-dd HH:mm} 获取的缓存；本次未发起实时检查。";
+                return _cachedReleases;
+            }
+            fetchTask = _releaseFetchTask ??= FetchReleasesCoreAsync();
+        }
+
+        try { return await fetchTask; }
+        finally
+        {
+            lock (_releaseSync)
+            {
+                if (ReferenceEquals(_releaseFetchTask, fetchTask)) _releaseFetchTask = null;
+            }
+        }
+    }
+
+    private async Task<List<ReleaseInfo>> FetchReleasesCoreAsync()
+    {
+        await _releaseGate.WaitAsync();
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
+            if (!string.IsNullOrWhiteSpace(_releasesEtag) && EntityTagHeaderValue.TryParse(_releasesEtag, out var etag))
+                request.Headers.IfNoneMatch.Add(etag);
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
+            {
+                lock (_releaseSync) _releasesFetchedAt = DateTime.UtcNow;
+                _releaseCacheNote = null;
+                return _cachedReleases;
+            }
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadAsStringAsync();
+            var parsed = ReleaseParser.ParseReleases(json)
+                .Where(r => !r.Draft && !r.Prerelease)
+                .ToList();
+            if (parsed.Count == 0) throw new InvalidDataException("GitHub 未返回任何正式 Release");
+
+            lock (_releaseSync)
+            {
+                _cachedReleases = parsed;
+                _releasesFetchedAt = DateTime.UtcNow;
+                _releasesEtag = response.Headers.ETag?.ToString() ?? _releasesEtag;
+                SaveReleaseCache(json);
+            }
+            _releaseCacheNote = null;
+            return parsed;
+        }
+        catch (Exception ex) when (_cachedReleases.Count > 0)
+        {
+            _releaseCacheNote = $"GitHub 暂不可用（{ex.Message}），使用缓存于 {_releasesFetchedAt.ToLocalTime():yyyy-MM-dd HH:mm} 获取的 Release；这不是实时检查结果。";
+            Serilog.Log.Warning(ex, "GitHub Release 请求失败，回退到本地缓存");
+            return _cachedReleases;
+        }
+        finally { _releaseGate.Release(); }
+    }
+
+    private void LoadReleaseCache()
+    {
+        try
+        {
+            if (!File.Exists(_releaseCachePath)) return;
+            using var doc = JsonDocument.Parse(File.ReadAllText(_releaseCachePath));
+            var root = doc.RootElement;
+            var json = root.GetProperty("releasesJson").GetString();
+            if (string.IsNullOrWhiteSpace(json)) return;
+            var releases = ReleaseParser.ParseReleases(json)
+                .Where(r => !r.Draft && !r.Prerelease)
+                .ToList();
+            if (releases.Count == 0) return;
+            _cachedReleases = releases;
+            _releasesFetchedAt = root.TryGetProperty("fetchedAtUtc", out var ts)
+                                 && DateTime.TryParse(ts.GetString(), out var dt) ? dt.ToUniversalTime() : DateTime.MinValue;
+            _releasesEtag = root.TryGetProperty("etag", out var tag) ? tag.GetString() : null;
+            _releaseCacheNote = $"离线缓存（获取于 {_releasesFetchedAt.ToLocalTime():yyyy-MM-dd HH:mm}），尚未完成实时检查。";
+        }
+        catch (Exception ex) { Serilog.Log.Debug(ex, "忽略无效的更新缓存"); }
+    }
+
+    private void SaveReleaseCache(string json)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(_releaseCachePath)!;
+            Directory.CreateDirectory(dir);
+            var temp = _releaseCachePath + ".tmp";
+            var content = JsonSerializer.Serialize(new
+            {
+                fetchedAtUtc = _releasesFetchedAt.ToString("O"),
+                etag = _releasesEtag,
+                releasesJson = json,
+            });
+            File.WriteAllText(temp, content);
+            if (File.Exists(_releaseCachePath)) File.Replace(temp, _releaseCachePath, null);
+            else File.Move(temp, _releaseCachePath);
+        }
+        catch (Exception ex) { Serilog.Log.Debug(ex, "更新 Release 缓存写入失败"); }
     }
 
     /// <summary>下载安装包到临时目录，并做完整性校验：文件名净化、下载源限定 GitHub 官方主机、

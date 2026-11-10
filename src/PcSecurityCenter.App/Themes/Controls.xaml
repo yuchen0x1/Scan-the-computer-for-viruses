@@ -1,10 +1,38 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:svc="clr-namespace:PcSecurityCenter.App.Services">
+                    xmlns:svc="clr-namespace:PcSecurityCenter.App.Services"
+                    xmlns:ctrl="clr-namespace:PcSecurityCenter.App.Controls">
 
     <svc:NotEmptyToVisibleConverter x:Key="NotEmptyToVisible" />
     <svc:BoolToVisibilityConverter x:Key="BoolToVis" />
     <svc:InverseBoolConverter x:Key="InverseBool" />
+
+    <!-- ============ 安全评分环形仪表盘 ============ -->
+    <Style TargetType="ctrl:ArcGauge">
+        <Setter Property="Width" Value="200" />
+        <Setter Property="Height" Value="200" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ctrl:ArcGauge">
+                    <Grid Width="200" Height="200">
+                        <ctrl:Arc x:Name="PART_TrackArc" Stroke="{DynamicResource BrushTrack}" StrokeThickness="12" />
+                        <ctrl:Arc x:Name="PART_ValueArc" Stroke="{DynamicResource BrushAccent}" StrokeThickness="12" />
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2">
+                            <TextBlock x:Name="PART_ScoreText" Text="0" FontSize="48" FontWeight="Bold"
+                                       Foreground="{DynamicResource BrushTextPrimary}" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock x:Name="PART_LabelText" Text="综合安全评分" FontSize="12"
+                                       Foreground="{DynamicResource BrushTextSecondary}" TextAlignment="Center"
+                                       HorizontalAlignment="Center" Margin="0,-2,0,5" />
+                            <TextBlock x:Name="PART_GradeText" Text="—" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource BrushAccent}" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
     <!-- 全局字体 -->
     <Style TargetType="TextBlock">

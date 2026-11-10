@@ -131,7 +131,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             var result = await _updater.CheckAsync();
-            if (result.IsUpdateAvailable && !_updateDeferred)
+            if (result.IsUpdateAvailable && !result.IsFromCache && !_updateDeferred)
                 await _updater.DownloadAsync();
         }
         catch (Exception ex)

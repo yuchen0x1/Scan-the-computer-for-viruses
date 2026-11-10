@@ -303,6 +303,14 @@ public class PowerShellRunnerTests
     }
 
     [Fact]
+    public async Task Run_ChineseOutput_IsUtf8()
+    {
+        var r = await PowerShellRunner.RunAsync("[Console]::WriteLine('可用更新：安全性更新')", timeoutMs: 30_000);
+        Assert.True(r.Success);
+        Assert.Contains("可用更新：安全性更新", r.StdOut);
+    }
+
+    [Fact]
     public async Task Run_Timeout_KillsProcess()
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

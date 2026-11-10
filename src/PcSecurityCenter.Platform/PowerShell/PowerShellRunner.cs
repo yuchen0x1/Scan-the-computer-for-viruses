@@ -62,10 +62,14 @@ public static class PowerShellRunner
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(script)) throw new ArgumentException("脚本不能为空");
+        // Windows PowerShell 5.1 在重定向 stdout 时默认使用系统 ANSI 代码页；
+        // 与 .NET 的 UTF-8 解码设置不一致会破坏 Windows Update 等中文 JSON 字符串。
+        const string utf8Output = "$utf8 = New-Object System.Text.UTF8Encoding($false); [Console]::OutputEncoding = $utf8; $OutputEncoding = $utf8; ";
+        var encodedScript = Encode(utf8Output + script);
         var psi = new ProcessStartInfo
         {
             FileName = PsExe,
-            Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + Encode(script),
+            Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + encodedScript,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,

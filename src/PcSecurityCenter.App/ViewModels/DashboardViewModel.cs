@@ -73,7 +73,13 @@ public partial class DashboardViewModel : ObservableObject, IPageActivatable
         // 性能实时刷新（窗口最小化或离开本页时跳过，减少无谓排版开销）
         _performance.Sampled += (_, snap) =>
         {
-            if (_isActive && !IsWindowMinimized()) Ui.Post(() => UpdatePerformance(snap));
+            if (!_isActive) return;
+            // 采样回调在计时器线程：这里不能读 WindowState（WPF 对象有线程亲和性，
+            // 跨线程访问会抛 InvalidOperationException 并被计时器吞掉，导致卡片永远停在「…」）。
+            Ui.Post(() =>
+            {
+                if (!IsWindowMinimized()) UpdatePerformance(snap);
+            });
         };
         _performance.Start();
         _ = LoadLastCheckAsync();
@@ -86,7 +92,12 @@ public partial class DashboardViewModel : ObservableObject, IPageActivatable
         Application.Current?.MainWindow is { } w && w.WindowState == WindowState.Minimized;
 
     // 离开驾驶舱页时暂停性能 UI 刷新（采样由采集器统一管理）
-    public void OnPageActivated() => _isActive = true;
+    public void OnPageActivated()
+    {
+        _isActive = true;
+        _ = RefreshPerformanceAsync();
+    }
+
     public void OnPageDeactivated() => _isActive = false;
     private bool _isActive = true;
 
