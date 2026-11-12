@@ -49,6 +49,7 @@ public class SmartRiskEngine : IScanEngine
 
     private ThreatInfo? Inspect(string file, ScanContext context)
     {
+        if (IsExcluded(file, context.ExcludedPaths)) return null;
         var attr = FileEnumerator.SafeAttributes(file);
         if (attr == null) return null;
         var ext = Path.GetExtension(file);
@@ -85,13 +86,26 @@ public class SmartRiskEngine : IScanEngine
                 "此类文件常通过伪装文档图标诱导运行。确认来源后建议隔离。", context);
         }
 
-        // 规则 3：下载/临时目录中的屏幕保护与脚本文件
+        // 规则 3：下载/临时目录中的屏幕保护与脚本文件。
+        // 常见开发产物中的 JS 不作为风险提示，PowerShell/bat/cmd 无内容证据时降为低级提示。
         if ((IsUnderTempOrDownload(dir)) && (ext == ".scr" || ScriptExt.Contains(ext)))
         {
-            return MakeThreat(file, $"临时/下载目录中的可执行脚本：{name}",
-                ThreatSeverity.Medium, DetectionKind.Suspicious,
-                $"位于 {dir} 的 {ext} 文件，屏幕保护/脚本常被用于传播",
-                "请确认文件来源；非本人下载的此类文件建议隔离。", context);
+            if (ext.Equals(".js", StringComparison.OrdinalIgnoreCase) && IsDeveloperArtifact(dir)) return null;
+            var evidence = ScriptContentIndicators(file);
+            if (evidence.Count > 0)
+            {
+                return MakeThreat(file, $"临时/下载目录中的可疑脚本：{name}",
+                    ThreatSeverity.High, DetectionKind.Suspicious,
+                    $"位于 {dir}，且脚本内容包含：" + string.Join("；", evidence),
+                    "请确认文件来源；脚本包含下载、持久化或隐藏执行行为，建议隔离后进一步分析。", context);
+            }
+
+            var isHighSignalExtension = ext is ".scr" or ".hta" or ".vbs" or ".vbe" or ".jse" or ".wsf";
+            return MakeThreat(file, $"临时/下载目录中的脚本提示：{name}",
+                isHighSignalExtension ? ThreatSeverity.Medium : ThreatSeverity.Low,
+                isHighSignalExtension ? DetectionKind.Suspicious : DetectionKind.Notice,
+                $"位于 {dir} 的 {ext} 文件，未发现脚本内容证据",
+                "请确认文件来源；没有内容证据时仅作提示，不等同于病毒判定。", context);
         }
 
         // 规则 4：临时目录中隐藏属性的 PE
@@ -113,6 +127,41 @@ public class SmartRiskEngine : IScanEngine
         var up = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (dir.StartsWith(temp, StringComparison.OrdinalIgnoreCase)) return true;
         if (!string.IsNullOrEmpty(up) && dir.StartsWith(Path.Combine(up, "Downloads"), StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private static bool IsDeveloperArtifact(string dir)
+    {
+        var normalized = dir.Replace('/', '\\').TrimEnd('\\') + "\\";
+        foreach (var marker in new[] { "\\node_modules\\", "\\.git\\", "\\dist\\", "\\build\\", "\\obj\\", "\\bin\\" })
+            if (normalized.Contains(marker, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // 临时解包目录若带 package.json，优先视为开发工具产物而不是未知脚本。
+        var current = dir;
+        for (var i = 0; i < 4 && !string.IsNullOrEmpty(current); i++)
+        {
+            if (Directory.Exists(current) && File.Exists(Path.Combine(current, "package.json"))) return true;
+            var parent = Path.GetDirectoryName(current);
+            if (string.Equals(parent, current, StringComparison.OrdinalIgnoreCase)) break;
+            current = parent ?? string.Empty;
+        }
+        return false;
+    }
+
+    private static bool IsExcluded(string file, IReadOnlyList<string> exclusions)
+    {
+        if (exclusions.Count == 0) return false;
+        var full = Path.GetFullPath(file).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        foreach (var raw in exclusions)
+        {
+            try
+            {
+                var root = Path.GetFullPath(raw).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (full.Equals(root, StringComparison.OrdinalIgnoreCase) ||
+                    full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch (Exception) { }
+        }
         return false;
     }
 

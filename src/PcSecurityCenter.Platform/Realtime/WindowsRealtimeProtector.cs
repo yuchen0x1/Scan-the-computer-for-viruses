@@ -22,7 +22,10 @@ public class WindowsRealtimeProtector : IRealtimeProtector
     private readonly List<FileSystemWatcher> _watchers = new();
     private System.Timers.Timer? _pollTimer;
     private System.Timers.Timer? _defenderTimer;
-    private readonly HashSet<int> _knownProcessIds = new();
+    // PID 会被 Windows 复用，单独记录 PID 会把新进程误认为旧进程。
+    // value 是 StartTime.Ticks；取不到启动时间时使用 0，并在下一轮继续校验。
+    private readonly Dictionary<int, long> _knownProcessStarts = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _lastProcessEventTicks = new();
     private readonly Dictionary<string, string> _knownRunEntries = new(StringComparer.OrdinalIgnoreCase);
     private bool _lastDefenderRt = true;
     private readonly object _lock = new();
@@ -89,7 +92,12 @@ public class WindowsRealtimeProtector : IRealtimeProtector
 
         // 初始化基线
         SnapshotRunEntries();
-        foreach (var p in Process.GetProcesses()) { try { _knownProcessIds.Add(p.Id); } catch (Exception) { } }
+        foreach (var p in Process.GetProcesses())
+        {
+            try { _knownProcessStarts[p.Id] = GetStartTicks(p); }
+            catch (Exception) { }
+            finally { p.Dispose(); }
+        }
         _ = PollDefenderAsync();
         Serilog.Log.Information("实时防护已启动（轮询间隔 {Sec}s）", _config.Current.RealtimePollIntervalSec);
     }
@@ -203,13 +211,16 @@ public class WindowsRealtimeProtector : IRealtimeProtector
     {
         var current = new List<Process>();
         try { current = Process.GetProcesses().ToList(); } catch (Exception) { return; }
+        var activeIds = new HashSet<int>();
 
         foreach (var p in current)
         {
             try
             {
-                if (_knownProcessIds.Contains(p.Id)) continue;
-                _knownProcessIds.Add(p.Id);
+                activeIds.Add(p.Id);
+                var startTicks = GetStartTicks(p);
+                if (_knownProcessStarts.TryGetValue(p.Id, out var oldStart) && oldStart == startTicks) continue;
+                _knownProcessStarts[p.Id] = startTicks;
                 if (p.Id <= 4) continue;
 
                 string path = "";
@@ -217,15 +228,22 @@ public class WindowsRealtimeProtector : IRealtimeProtector
                 if (string.IsNullOrEmpty(path)) continue;
 
                 var temp = Path.GetTempPath();
-                var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 if (path.StartsWith(temp, StringComparison.OrdinalIgnoreCase))
                 {
+                    var now = Environment.TickCount64;
+                    var eventKey = $"{path}|temp-process";
+                    if (_lastProcessEventTicks.TryGetValue(eventKey, out var last) && now - last < 2000) continue;
+                    _lastProcessEventTicks[eventKey] = now;
+                    var benign = IsKnownBuildTool(p.ProcessName);
                     _ = _events.PublishAsync(new SecurityEvent
                     {
                         Type = SecurityEventType.RealtimeDetection,
-                        Severity = ThreatSeverity.Medium,
+                        Severity = benign ? ThreatSeverity.Info : ThreatSeverity.Medium,
                         Title = "临时目录中的新进程",
-                        Detail = $"{p.ProcessName}（PID {p.Id}）从 {path} 启动。临时目录运行的程序需留意来源；若为本人操作（安装包/更新程序）可忽略。",
+                        Detail = $"{p.ProcessName}（PID {p.Id}）从 {path} 启动。" +
+                                 (benign
+                                     ? "识别为常见构建/安装工具，仅作信息记录。"
+                                     : "临时目录运行的程序需留意来源；若为本人操作（安装包/更新程序）可忽略。"),
                     });
                 }
             }
@@ -233,10 +251,28 @@ public class WindowsRealtimeProtector : IRealtimeProtector
             finally { try { p.Dispose(); } catch { } }
         }
 
-        // 清理已退出进程记录，避免集合无限增长
-        if (_knownProcessIds.Count > 2000)
-            _knownProcessIds.Clear();
+        // 只移除已退出的 PID；绝不整体清空，否则下一轮会把所有进程重新报成“新进程”。
+        foreach (var pid in _knownProcessStarts.Keys.Where(pid => !activeIds.Contains(pid)).ToList())
+            _knownProcessStarts.Remove(pid);
+        var nowTicks = Environment.TickCount64;
+        foreach (var key in _lastProcessEventTicks.Keys.ToList())
+            if (_lastProcessEventTicks.TryGetValue(key, out var seen) && nowTicks - seen > 60_000)
+                _lastProcessEventTicks.TryRemove(key, out _);
     }
+
+    private static long GetStartTicks(Process process)
+    {
+        try { return process.StartTime.ToUniversalTime().Ticks; }
+        catch (Exception) { return 0; }
+    }
+
+    private static bool IsKnownBuildTool(string processName)
+        => processName.Equals("vctip", StringComparison.OrdinalIgnoreCase)
+           || processName.Equals("cl", StringComparison.OrdinalIgnoreCase)
+           || processName.Equals("link", StringComparison.OrdinalIgnoreCase)
+           || processName.Equals("msbuild", StringComparison.OrdinalIgnoreCase)
+           || processName.Equals("mspdbsrv", StringComparison.OrdinalIgnoreCase)
+           || processName.Equals("msiexec", StringComparison.OrdinalIgnoreCase);
 
     private int _defenderPollBusy;
     private async Task PollDefenderAsync()

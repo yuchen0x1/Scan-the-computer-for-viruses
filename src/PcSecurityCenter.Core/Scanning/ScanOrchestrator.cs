@@ -18,6 +18,7 @@ public class ScanOrchestrator : IScanOrchestrator
     private readonly IDefenderClient _defender;
     private readonly IScanRangeBuilder _rangeBuilder;
     private readonly IScanEngine _smartEngine;
+    private readonly IConfigService? _config;
     private readonly object _gate = new();
 
     private CancellationTokenSource? _cts;
@@ -29,11 +30,13 @@ public class ScanOrchestrator : IScanOrchestrator
     public event EventHandler<ThreatInfo>? ThreatFound;
     public event EventHandler<ScanProgress>? Completed;
 
-    public ScanOrchestrator(IDefenderClient defender, IScanRangeBuilder rangeBuilder, IScanEngine smartEngine)
+    public ScanOrchestrator(IDefenderClient defender, IScanRangeBuilder rangeBuilder, IScanEngine smartEngine,
+        IConfigService? config = null)
     {
         _defender = defender;
         _rangeBuilder = rangeBuilder;
         _smartEngine = smartEngine;
+        _config = config;
     }
 
     private void Update(Action<ScanProgress> mutate)
@@ -180,12 +183,25 @@ public class ScanOrchestrator : IScanOrchestrator
         }
     }
 
-    private static ScanContext contextFor(ScanRequest request, IReadOnlyList<string> roots, Guid runId) => new()
+    private ScanContext contextFor(ScanRequest request, IReadOnlyList<string> roots, Guid runId) => new()
     {
         Type = request.Type,
         ScanRunId = runId,
         RootPaths = roots,
+        ExcludedPaths = ParseExclusions(_config?.Current.ScanExclusions),
     };
+
+    private static IReadOnlyList<string> ParseExclusions(string? raw)
+    {
+        var result = new List<string>();
+        foreach (var item in (raw ?? string.Empty).Split(new[] { '\r', '\n', ';' },
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try { result.Add(Path.GetFullPath(item)); }
+            catch (Exception) { Log.Debug("忽略无效扫描排除路径：{Path}", item); }
+        }
+        return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
 
     // ---------- 智能引擎（范围文件 → 规则检测） ----------
     private async Task RunSmartEngineAsync(List<string> roots, ScanContext ctx,

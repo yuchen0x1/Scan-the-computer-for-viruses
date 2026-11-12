@@ -162,6 +162,7 @@ public interface INotificationService
 public interface IConfigService
 {
     AppConfigData Current { get; }
-    Task SaveAsync();
+    /// <summary>保存配置；失败时返回 false，调用方必须向用户反馈而不是显示成功。</summary>
+    Task<bool> SaveAsync();
     Task LoadAsync();
 }

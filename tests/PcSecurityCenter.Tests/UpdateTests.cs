@@ -89,6 +89,74 @@ public class UpdateTests
         Assert.Equal("1.0.2", list[0].Version);
         Assert.Equal("1.0.1", list[1].Version);
     }
+
+    [Fact]
+    public void ParseAtomFeed_解析版本说明与发布页()
+    {
+        const string xml = """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <id>tag:github.com,2008:Repository/1/v1.2.3</id>
+            <updated>2026-11-12T01:02:03Z</updated>
+            <link rel="alternate" href="https://github.com/example/repo/releases/tag/v1.2.3" />
+            <title>Windows 安全卫士 v1.2.3</title>
+            <content type="html">&lt;h2&gt;修复&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;修复更新检查&lt;/li&gt;&lt;/ul&gt;</content>
+          </entry>
+        </feed>
+        """;
+
+        var release = Assert.Single(ReleaseParser.ParseAtomFeed(xml));
+        Assert.Equal("v1.2.3", release.Tag);
+        Assert.Equal("1.2.3", release.Version);
+        Assert.Contains("修复更新检查", release.Notes);
+        Assert.Equal("https://github.com/example/repo/releases/tag/v1.2.3", release.ReleasePageUrl);
+        Assert.Equal(new DateTime(2026, 11, 12, 1, 2, 3, DateTimeKind.Utc), release.PublishedAt);
+    }
+
+    [Fact]
+    public void ParseAtomFeed_预发布标签标记为Prerelease()
+    {
+        const string xml = """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <id>tag:github.com,2008:Repository/1/v2.0.0-beta.1</id>
+            <updated>2026-11-12T01:02:03Z</updated>
+            <link rel="alternate" href="https://github.com/example/repo/releases/tag/v2.0.0-beta.1" />
+            <title>beta</title>
+          </entry>
+        </feed>
+        """;
+
+        Assert.True(Assert.Single(ReleaseParser.ParseAtomFeed(xml)).Prerelease);
+    }
+
+    [Fact]
+    public void ParseUpdateManifest_解析资产哈希与策略字段()
+    {
+        const string json = """
+        {
+          "version": "1.2.3",
+          "tag": "v1.2.3",
+          "releaseDate": "2026-11-12T01:02:03Z",
+          "releaseNotes": "修复更新链",
+          "channel": "stable",
+          "mandatory": true,
+          "securityFix": true,
+          "assets": [
+            { "name": "PcSecurityCenter-Setup-1.2.3.exe", "downloadUrl": "https://github.com/x/y/releases/download/v1.2.3/a.exe", "size": 42, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            { "name": "SHA256SUMS.txt", "downloadUrl": "https://github.com/x/y/releases/download/v1.2.3/SHA256SUMS.txt" }
+          ]
+        }
+        """;
+
+        var release = Assert.Single(ReleaseParser.ParseUpdateManifest(json));
+        Assert.True(release.Mandatory);
+        Assert.True(release.SecurityFix);
+        Assert.Equal("stable", release.Channel);
+        Assert.Equal(42, release.SetupAsset!.Size);
+        Assert.Equal("a".PadRight(64, 'a'), release.SetupAsset.Sha256);
+        Assert.NotNull(release.ChecksumsAsset);
+    }
 }
 
 /// <summary>更新链安全（v1.1.0 加固回归）：文件名净化、校验和解析、资源挑选。</summary>

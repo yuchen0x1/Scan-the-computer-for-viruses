@@ -86,6 +86,8 @@ public partial class App : Application
             var config = Services.GetRequiredService<IConfigService>();
             try { config.LoadAsync().GetAwaiter().GetResult(); }
             catch (Exception ex) { Serilog.Log.Warning(ex, "启动时读取配置失败，使用默认配置"); }
+            // 配置读取后重新初始化日志，使 MaxLogDays 真正控制滚动日志保留数量。
+            LoggingSetup.Initialize(config.Current);
 
             // 2) 应用主题：必须在窗口创建前完成，保证第一帧就是用户选择的配色（默认亮色）
             ThemeService.Apply(config.Current.UseLightTheme);
@@ -100,7 +102,17 @@ public partial class App : Application
             // 4) 后台预热 Defender 状态（异步且带 8 秒缓存，不阻塞 UI；与状态栏共用同一次结果）
             _ = Task.Run(async () =>
             {
-                try { await Services.GetRequiredService<IDefenderClient>().GetStatusAsync(); }
+                try
+                {
+                    var defender = Services.GetRequiredService<IDefenderClient>();
+                    var status = await defender.GetStatusAsync();
+                    if (config.Current.AutoUpdateDefenderSignatures && status.Installed &&
+                        (!status.SignatureLastUpdated.HasValue || DateTime.Now - status.SignatureLastUpdated.Value > TimeSpan.FromHours(24)))
+                    {
+                        var updated = await defender.UpdateSignaturesAsync();
+                        Serilog.Log.Information("按配置执行 Defender 病毒库更新：{Result}", updated ? "成功" : "失败");
+                    }
+                }
                 catch (Exception) { }
             });
 

@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace PcSecurityCenter.Core.Update;
 
@@ -10,6 +12,8 @@ public sealed class ReleaseAsset
     public string DownloadUrl { get; set; } = "";
     public long Size { get; set; }
     public string ContentType { get; set; } = "";
+    /// <summary>可选的发布清单内 SHA-256；存在时无需再次下载 SHA256SUMS。</summary>
+    public string Sha256 { get; set; } = "";
 
     /// <summary>返回可安全落盘的文件名（仅取末段、剔除非法字符）；名称无法安全落盘时返回 null。</summary>
     public string? SafeFileName()
@@ -30,11 +34,16 @@ public sealed class ReleaseInfo
     public string Tag { get; set; } = "";
     public string Version { get; set; } = "";
     public string Name { get; set; } = "";
+    public string ReleasePageUrl { get; set; } = "";
     /// <summary>发布说明（Markdown 原文，作为该版本的更新日志）。</summary>
     public string Notes { get; set; } = "";
     public DateTime PublishedAt { get; set; }
     public bool Prerelease { get; set; }
     public bool Draft { get; set; }
+    public string Channel { get; set; } = "stable";
+    public bool Mandatory { get; set; }
+    public bool SecurityFix { get; set; }
+    public string MinSupportedVersion { get; set; } = "";
     public List<ReleaseAsset> Assets { get; set; } = new();
 
     /// <summary>挑选用于自动更新的安装包资源：优先名称含 "Setup" 的 .exe（Inno 安装程序），
@@ -132,6 +141,7 @@ public static class ReleaseParser
             Tag = e.Str("tag_name"),
             Name = e.Str("name"),
             Notes = e.Str("body"),
+            ReleasePageUrl = e.Str("html_url"),
             Prerelease = e.Bool("prerelease"),
             Draft = e.Bool("draft"),
         };
@@ -152,10 +162,121 @@ public static class ReleaseParser
                     DownloadUrl = a.Str("browser_download_url"),
                     Size = a.Long("size"),
                     ContentType = a.Str("content_type"),
+                    Sha256 = a.Str("sha256"),
                 });
             }
         }
         return r;
+    }
+
+    /// <summary>解析 GitHub Releases Atom feed。该来源不受匿名 REST API 配额影响。</summary>
+    public static List<ReleaseInfo> ParseAtomFeed(string xml)
+    {
+        var result = new List<ReleaseInfo>();
+        var doc = XDocument.Parse(xml, LoadOptions.None);
+        var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
+        foreach (var entry in doc.Root?.Elements(ns + "entry") ?? Enumerable.Empty<XElement>())
+        {
+            var pageUrl = entry.Elements(ns + "link")
+                .FirstOrDefault(e => string.Equals((string?)e.Attribute("rel"), "alternate", StringComparison.OrdinalIgnoreCase))
+                ?.Attribute("href")?.Value ?? "";
+            var tag = ExtractTag(pageUrl);
+            if (tag.Length == 0)
+            {
+                var id = (string?)entry.Element(ns + "id") ?? "";
+                tag = id[(id.LastIndexOf('/') + 1)..];
+            }
+
+            var title = (string?)entry.Element(ns + "title") ?? tag;
+            var notesHtml = (string?)entry.Element(ns + "content") ?? "";
+            var updated = (string?)entry.Element(ns + "updated") ?? (string?)entry.Element(ns + "published") ?? "";
+            DateTime.TryParse(updated, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var publishedAt);
+
+            result.Add(new ReleaseInfo
+            {
+                Tag = tag,
+                Version = VersionUtility.ParseVersion(tag)?.ToString() ?? tag,
+                Name = WebUtility.HtmlDecode(title),
+                Notes = HtmlToText(notesHtml),
+                ReleasePageUrl = pageUrl,
+                PublishedAt = publishedAt,
+                Channel = "stable",
+                Prerelease = tag.Contains('-', StringComparison.Ordinal),
+            });
+        }
+        return result;
+    }
+
+    /// <summary>解析发布工作流生成的静态 update.json 清单。</summary>
+    public static List<ReleaseInfo> ParseUpdateManifest(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var e = doc.RootElement;
+        if (e.ValueKind != JsonValueKind.Object) return new List<ReleaseInfo>();
+
+        var tag = e.Str("tag");
+        var version = e.Str("version");
+        var release = new ReleaseInfo
+        {
+            Tag = string.IsNullOrWhiteSpace(tag) ? version : tag,
+            Version = VersionUtility.ParseVersion(version.Length > 0 ? version : tag)?.ToString() ?? version,
+            Name = e.Str("name"),
+            Notes = e.Str("releaseNotes"),
+            ReleasePageUrl = e.Str("releaseUrl"),
+            Channel = string.IsNullOrWhiteSpace(e.Str("channel")) ? "stable" : e.Str("channel"),
+            Mandatory = e.Bool("mandatory"),
+            SecurityFix = e.Bool("securityFix"),
+            MinSupportedVersion = e.Str("minSupportedVersion"),
+            Prerelease = e.Bool("prerelease"),
+            Draft = e.Bool("draft"),
+        };
+        var date = e.Str("releaseDate");
+        if (DateTime.TryParse(date, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var publishedAt))
+            release.PublishedAt = publishedAt;
+
+        if (e.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var a in assets.EnumerateArray())
+            {
+                release.Assets.Add(new ReleaseAsset
+                {
+                    Name = a.Str("name"),
+                    DownloadUrl = a.Str("downloadUrl"),
+                    Size = a.Long("size"),
+                    ContentType = a.Str("contentType"),
+                    Sha256 = a.Str("sha256"),
+                });
+            }
+        }
+        return new List<ReleaseInfo> { release };
+    }
+
+    private static string ExtractTag(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return "";
+        var marker = "/releases/tag/";
+        var index = uri.AbsolutePath.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        return index < 0 ? "" : Uri.UnescapeDataString(uri.AbsolutePath[(index + marker.Length)..]).Trim('/');
+    }
+
+    private static string HtmlToText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+        var text = html
+            .Replace("<li>", "\n- ", StringComparison.OrdinalIgnoreCase)
+            .Replace("</li>", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("</p>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("</h1>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("</h2>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("</h3>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("<br>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("<br/>", "\n", StringComparison.OrdinalIgnoreCase)
+            .Replace("<br />", "\n", StringComparison.OrdinalIgnoreCase);
+        text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+        text = WebUtility.HtmlDecode(text);
+        return string.Join("\n", text.Replace("\r\n", "\n").Split('\n').Select(x => x.TrimEnd()).Where(x => x.Trim().Length > 0)).Trim();
     }
 }
 

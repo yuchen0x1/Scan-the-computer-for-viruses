@@ -11,6 +11,16 @@
 
 ---
 
+## 最新更新
+
+### v1.2.3（2026-11-12）
+
+在线更新链路已升级：优先使用静态更新清单和 GitHub Releases Atom feed，降低匿名 API 限流影响；下载失败自动重试，并在安装前执行 SHA256、文件大小和签名校验。新增 GitHub Actions 标签发布流程，自动生成安装包、便携版、校验和与 `update.json`。
+
+完整历史见 [docs/releases/release-notes.md](docs/releases/release-notes.md) 和 [installer/更新日志.md](installer/更新日志.md)。
+
+---
+
 ## 功能总览（13 个页面）
 
 | 模块 | 能力 | 数据来源 |
@@ -28,7 +38,7 @@
 | 高级工具 | 系统信息、环境变量、电源模式、服务、适配器、隐私设置快捷入口（全部只读） | WMI/命令行只读 |
 | 文件分析 | SHA256/SHA1/MD5、PE 头解析、数字签名验证、熵分析、EICAR 引擎自检；**全部本地完成，不上传任何内容** | 本地实现 + WinVerifyTrust |
 | 安全报告 | 检查/扫描/威胁/维护/事件汇总，HTML 与 PDF 导出，如实标注覆盖范围与限制 | SQLite 聚合 |
-| 更新中心 | 检测更新与更新日志同一入口；启动时尝试检查 GitHub Releases，新版本自动下载并提示升级；限流/离线时明确标注是否使用本地缓存 | GitHub Releases（ETag/缓存）/ 本地 更新日志.md |
+| 更新中心 | 检测更新与更新日志同一入口；启动时只检查 GitHub 静态清单/Atom/REST，多级回退；下载与重启由用户明确触发；缓存结果明确标注 | GitHub Releases（update.json/Atom/ETag/缓存）/ 本地 更新日志.md |
 
 ## 安全与权限体系（最高优先级）
 
@@ -36,7 +46,7 @@
 - 危险操作（隔离/删除/清理/禁用启动项）全部二次确认 + 日志记录。
 - 不会静默关闭 Defender/防火墙，不会上传任何文件内容或隐私数据，扫描结果可追溯（引擎、依据、时间、哈希全记录）。
 - 隔离区：AES-256-CBC 加密 + HMAC-SHA256 认证（encrypt-then-MAC），主密钥经 DPAPI（CurrentUser）保护存盘；密文被篡改的隔离数据**拒绝恢复**。
-- 自动更新：安装包仅从 GitHub 官方主机下载，落盘前做文件名净化、字节数核对、SHA256 与发布附带 SHA256SUMS 比对、Authenticode 签名与吊销状态验证，安装前再次比对哈希防替换。
+- 自动更新：启动时只检查版本，不自动下载；用户确认下载后，安装包仅从 GitHub 官方主机下载，落盘前做文件名净化、字节数核对、SHA256 与发布附带 SHA256SUMS 比对、Authenticode 签名与吊销状态验证，安装前再次比对哈希防替换；扫描进行中应用更新会先要求确认。
 
 ## 评分规则（公开透明）
 
@@ -76,19 +86,22 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 ## 安装、更新与发布
 
 ### 安装包
-- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.2.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
-- 免安装便携版：`PcSecurityCenter-Portable-1.2.2.zip`，解压即用。
+- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.3.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`PcSecurityCenter-Portable-1.2.3.zip`，解压即用。
 - 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
 - 自 1.2.0 起要求 **Windows 10 2004 (build 19041) 及以上**（x64）；Windows 10 1809/1909 不再支持。
 - 每个 Release 附带 `SHA256SUMS.txt`，可自行校验下载产物完整性。
 
 ### 内置自动更新（更新中心）
 - 左侧导航「更新中心」将**检测更新**与**更新日志**整合在同一页面：在线时更新日志直接来自官方发布页，离线时回退到随安装包分发的本地记录。
-- 启动时自动尝试检测 GitHub Releases 上的新版本；发现新版本后**自动下载安装包**，下载完成后界面顶部浮现更新横幅（含 60 秒倒计时），点击「立即更新」或倒计时结束即**静默运行安装程序并重启应用**以完成升级；也可选择「稍后」本次不更新。
-- 更新检查与更新日志共用 Releases 数据，支持 ETag 与 10 分钟内请求复用；若网络不可用或 API 限流，会显示最近缓存的发布时间并明确注明并非实时检查。首次运行且没有缓存时会如实显示检查失败。
+- 启动时自动尝试检测 GitHub Releases 上的新版本；发现新版本后仅提示，用户在更新中心点击下载后才获取安装包。下载完成后界面顶部显示更新横幅，点击「立即更新」并确认后才会运行安装程序并重启应用；扫描进行中会显示中断提示，也可选择「稍后」。
+- 更新检查与更新日志共用 Releases 数据，优先使用静态 `update.json` 和 Atom feed，REST API 仅作兜底；支持 ETag 与 10 分钟内请求复用。若在线来源不可用，会显示最近缓存的发布时间并明确注明并非实时检查，缓存结果不会允许直接下载。
 - 所有网络操作带超时与异常保护，更新检测失败不会影响正常启动与使用。
 - 更新包下载后必须通过完整性校验（SHA256 + 签名/吊销验证）才会执行，校验不过拒绝安装。
-- 更新通道自 `v1.1.0` 起持续维护，后续版本可由自动更新直接从官方发布页拉取，用户始终使用最新版本。
+- 更新包下载失败会自动重试最多 3 次；发布清单中的 SHA256 可直接校验，未提供时回退到 `SHA256SUMS.txt`。
+- 更新通道自 `v1.1.0` 起持续维护，后续版本可由用户确认后从官方发布页拉取并完成校验。
+
+完整架构、发布工作流、故障处理和当前签名限制见 [docs/AUTO_UPDATE.md](docs/AUTO_UPDATE.md)。
 
 ### 发布构建
 ```bash
@@ -99,11 +112,11 @@ pwsh publish.ps1
 # 1) 自包含发布
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 2) 便携版 zip
-Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.2.zip
+Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.3.zip
 # 3) 安装包（需 Inno Setup 6）
-iscc /DAppVersion=1.2.2 installer/PcSecurityCenter.iss
+iscc /DAppVersion=1.2.3 installer/PcSecurityCenter.iss
 # 4) 创建 GitHub Release 并上传安装包、便携版与 SHA256SUMS
-gh release create v1.2.2 -t "Windows 智能安全卫士 v1.2.2" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.2.exe publish/PcSecurityCenter-Portable-1.2.2.zip publish/SHA256SUMS.txt
+gh release create v1.2.3 -t "Windows 智能安全卫士 v1.2.3" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.3.exe publish/PcSecurityCenter-Portable-1.2.3.zip publish/SHA256SUMS.txt publish/update.json
 ```
 
 ## Star History

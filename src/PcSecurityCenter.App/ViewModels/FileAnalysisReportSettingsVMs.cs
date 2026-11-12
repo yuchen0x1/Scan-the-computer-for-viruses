@@ -22,8 +22,7 @@ public partial class FileAnalysisViewModel : ObservableObject
     [ObservableProperty] private string _filePath = "";
     [ObservableProperty] private string _resultText = "";
     [ObservableProperty] private string _hashConsentNote =
-        "隐私说明：本页分析全部在本机完成，不会上传任何文件内容或哈希。" +
-        "「哈希信誉查询」为可选功能，默认关闭；如需启用，请在设置中心配置 API Key 并明确同意后再使用。";
+        "隐私说明：本页分析全部在本机完成，不会上传任何文件内容或哈希；信誉查询未接入，当前不会联网发送哈希。";
     [ObservableProperty] private string _eicarNote =
         "提示：可通过下方按钮生成 EICAR 标准测试文件（全球通用的无害病毒测试样本，仅用于验证 Defender 引擎是否正常工作）。" +
         "生成后请立即用「对文件执行 Defender 扫描」验证，验证完成请删除该测试文件。";
@@ -261,8 +260,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _realtimePollSec;
     [ObservableProperty] private bool _realtimeEnabled;
     [ObservableProperty] private bool _autoUpdateSignatures;
-    [ObservableProperty] private bool _hashLookupEnabled;
-    [ObservableProperty] private string _hashLookupApiKey = "";
+    [ObservableProperty] private int _maxLogDays;
+    [ObservableProperty] private string _scanExclusions = "";
     [ObservableProperty] private string _statusText = "";
     [ObservableProperty] private string _dataDirText;
 
@@ -283,8 +282,8 @@ public partial class SettingsViewModel : ObservableObject
         RealtimePollSec = config.Current.RealtimePollIntervalSec;
         RealtimeEnabled = config.Current.RealtimeEnabled;
         AutoUpdateSignatures = config.Current.AutoUpdateDefenderSignatures;
-        HashLookupEnabled = config.Current.HashLookupEnabled;
-        HashLookupApiKey = config.Current.HashLookupApiKey ?? "";
+        MaxLogDays = config.Current.MaxLogDays;
+        ScanExclusions = config.Current.ScanExclusions;
         DataDirText = PcSecurityCenter.Data.Configuration.AppPaths.DataRoot;
         UseLightTheme = config.Current.UseLightTheme;
     }
@@ -309,13 +308,19 @@ public partial class SettingsViewModel : ObservableObject
         c.RealtimePollIntervalSec = Math.Clamp(RealtimePollSec, 5, 300);
         c.RealtimeEnabled = RealtimeEnabled;
         c.AutoUpdateDefenderSignatures = AutoUpdateSignatures;
-        c.HashLookupEnabled = HashLookupEnabled;
-        c.HashLookupApiKey = string.IsNullOrWhiteSpace(HashLookupApiKey) ? null : HashLookupApiKey.Trim();
+        c.MaxLogDays = Math.Clamp(MaxLogDays, 1, 3650);
+        c.ScanExclusions = ScanExclusions ?? string.Empty;
         c.UseLightTheme = UseLightTheme;
-        await _config.SaveAsync();
+        var saved = await _config.SaveAsync();
+        if (!saved)
+        {
+            StatusText = "设置保存失败：无法写入配置文件，请检查目录权限或磁盘空间。";
+            return;
+        }
         _performance.SetIntervalMs(c.PerformanceIntervalMs);
         PcSecurityCenter.App.Services.ThemeService.Apply(c.UseLightTheme);
-        StatusText = "设置已保存。部分设置在重启实时防护后完全生效。";
+        PcSecurityCenter.Data.Configuration.LoggingSetup.Initialize(c);
+        StatusText = "设置已保存。排除路径与日志保留策略已生效，实时防护间隔下次轮询时生效。";
     }
 
     [RelayCommand]

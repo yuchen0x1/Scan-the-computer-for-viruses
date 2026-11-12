@@ -89,6 +89,8 @@ public class ScanContext
     public ScanType Type { get; init; }
     public Guid ScanRunId { get; init; }
     public IReadOnlyList<string> RootPaths { get; init; } = Array.Empty<string>();
+    /// <summary>仅作用于 SmartRisk 规则；Defender 的引擎排除仍由 Windows 安全中心管理。</summary>
+    public IReadOnlyList<string> ExcludedPaths { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>扫描编排器：统一调度范围枚举、多引擎、暂停/恢复/取消、进度与记录。</summary>

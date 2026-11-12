@@ -61,9 +61,10 @@ public class DefenderClient : IDefenderClient
         try
         {
             var r = await PowerShellRunner.RunAsync(
-                "$s = Get-MpComputerStatus -ErrorAction Stop; @{ok=$true} | ConvertTo-Json -Compress",
+                "$s = Get-MpComputerStatus -ErrorAction Stop; @{ok=([bool]$s.AMServiceEnabled -and [bool]$s.AntivirusEnabled)} | ConvertTo-Json -Compress",
                 timeoutMs: 45_000);
-            var ok = r.Success && r.StdOut.Contains("\"ok\"");
+            var ok = r.Success && r.Json is { ValueKind: JsonValueKind.Object } j &&
+                     j.TryGetProperty("ok", out var value) && value.ValueKind == JsonValueKind.True;
             Serilog.Log.Information("Defender 可用性探测完成：{Result}", ok);
             return ok;
         }

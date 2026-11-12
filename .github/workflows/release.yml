@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Validate tag and build/test/package
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = [string]($props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          $tagVersion = '${{ github.ref_name }}'.TrimStart('v')
+          if ($version -ne $tagVersion) { throw "Git tag $tagVersion does not match Directory.Build.props version $version" }
+          ./publish.ps1
+
+      - name: Generate update manifest
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = [string]($props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          $tag = "v$version"
+          $repo = "https://github.com/${{ github.repository }}"
+          $setup = Get-ChildItem "publish/installer/PcSecurityCenter-Setup-$version.exe" | Select-Object -First 1
+          $portable = Get-Item "publish/PcSecurityCenter-Portable-$version.zip"
+          $sums = Get-Item "publish/SHA256SUMS.txt"
+          $manifest = [ordered]@{
+            version = $version
+            tag = $tag
+            name = "Windows 智能安全卫士 $version"
+            channel = 'stable'
+            releaseDate = (Get-Date).ToUniversalTime().ToString('O')
+            releaseUrl = "$repo/releases/tag/$tag"
+            releaseNotes = (Get-Content -Raw 'installer/更新日志.md')
+            mandatory = $false
+            securityFix = $false
+            minSupportedVersion = '1.2.0'
+            assets = @(
+              [ordered]@{ name=$setup.Name; downloadUrl="$repo/releases/download/$tag/$($setup.Name)"; size=$setup.Length; sha256=(Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); contentType='application/octet-stream' },
+              [ordered]@{ name=$portable.Name; downloadUrl="$repo/releases/download/$tag/$($portable.Name)"; size=$portable.Length; sha256=(Get-FileHash $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); contentType='application/zip' },
+              [ordered]@{ name=$sums.Name; downloadUrl="$repo/releases/download/$tag/$($sums.Name)"; size=$sums.Length; sha256=(Get-FileHash $sums.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); contentType='text/plain' }
+            )
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content publish/update.json -Encoding utf8NoBOM
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          gh release create '${{ github.ref_name }}' `
+            --verify-tag `
+            --title "Windows 智能安全卫士 v$version" `
+            --generate-notes `
+            "publish/installer/PcSecurityCenter-Setup-$version.exe" `
+            "publish/PcSecurityCenter-Portable-$version.zip" `
+            publish/SHA256SUMS.txt `
+            publish/update.json

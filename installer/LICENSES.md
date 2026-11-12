@@ -28,4 +28,4 @@ Windows 智能安全卫士 (PC Security Center) — 供学习与个人使用。
 - 本软件不收集、不上传任何用户数据；所有网络访问仅限：
   1. Microsoft Defender 病毒库更新（经 Microsoft 官方接口，用户触发）
   2. Windows Update 待更新查询（经 Microsoft 官方 COM 接口，用户触发）
-  3. 可选的哈希信誉查询（默认关闭，需用户配置 API Key）
+  3. 文件哈希分析在本机完成；当前没有哈希信誉联网查询功能

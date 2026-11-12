@@ -22,14 +22,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IDefenderClient _defender;
     private readonly IPermissionService _permission;
     private readonly IRealtimeProtector _protector;
+    private readonly IScanOrchestrator _scanner;
     private readonly System.Windows.Forms.NotifyIcon _trayIcon;
     private readonly System.Windows.Forms.ContextMenuStrip _trayMenu;
     private readonly UpdaterService _updater;
     private bool _allowExit;
     private bool _trayHintShown;
     private bool _updateDeferred;
-    private System.Windows.Threading.DispatcherTimer? _updateTimer;
-    private int _updateCountdown;
     private readonly List<(string title, string msg, ThreatSeverity sev, DateTime time)> _notifications2 = new();
 
     public string GlobalStatusText { get; set; } = "评估中…";
@@ -50,6 +49,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _defender = App.Services.GetRequiredService<IDefenderClient>();
         _permission = App.Services.GetRequiredService<IPermissionService>();
         _protector = App.Services.GetRequiredService<IRealtimeProtector>();
+        _scanner = App.Services.GetRequiredService<IScanOrchestrator>();
         _updater = App.Services.GetRequiredService<UpdaterService>();
 
         InitializeComponent();
@@ -122,7 +122,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // 更新状态变化 → 刷新顶部更新横幅（在 UI 线程）
         _updater.StateChanged += (_, _) => Ui.Post(RefreshUpdateBanner);
 
-        // 启动即自动检测更新：检测到新版本后自动下载，下载完成后由横幅提示重启升级。
+        // 启动只检查更新，不自动下载或重启；下载和应用必须由用户明确触发。
         _ = StartupUpdateCheckAsync();
     }
 
@@ -132,7 +132,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var result = await _updater.CheckAsync();
             if (result.IsUpdateAvailable && !result.IsFromCache && !_updateDeferred)
-                await _updater.DownloadAsync();
+                Serilog.Log.Information("检测到新版本 {Version}，等待用户在更新中心确认下载", result.Latest?.Version);
         }
         catch (Exception ex)
         {
@@ -148,12 +148,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             case UpdateState.Ready when !_updateDeferred:
             {
                 UpdateBannerTitle.Text = $"发现新版本 v{_updater.LatestRelease?.Version}，已下载更新包";
-                _updateCountdown = 60;
-                UpdateBannerSub.Text = $"将在 {_updateCountdown} 秒后自动重启以完成升级；点击「立即更新」马上升级，或「稍后」本次不更新。";
+                UpdateBannerSub.Text = "更新包已通过完整性校验；点击「立即更新」后才会重启应用，或选择「稍后」。";
                 UpdateNowButton.Visibility = Visibility.Visible;
                 UpdateLaterButton.Visibility = Visibility.Visible;
                 UpdateBanner.Visibility = Visibility.Visible;
-                StartUpdateCountdown();
                 break;
             }
             case UpdateState.Downloading when !_updateDeferred:
@@ -163,54 +161,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 UpdateNowButton.Visibility = Visibility.Collapsed;
                 UpdateLaterButton.Visibility = Visibility.Visible;
                 UpdateBanner.Visibility = Visibility.Visible;
-                StopUpdateCountdown();
                 break;
             }
             default:
-                StopUpdateCountdown();
                 UpdateBanner.Visibility = Visibility.Collapsed;
                 break;
         }
     }
 
-    private void StartUpdateCountdown()
+    private async void UpdateNowButton_Click(object sender, RoutedEventArgs e)
     {
-        StopUpdateCountdown();
-        _updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _updateTimer.Tick += UpdateCountdownTick;
-        _updateTimer.Start();
-    }
-
-    private void StopUpdateCountdown()
-    {
-        if (_updateTimer == null) return;
-        _updateTimer.Stop();
-        _updateTimer.Tick -= UpdateCountdownTick;
-        _updateTimer = null;
-    }
-
-    private void UpdateCountdownTick(object? sender, EventArgs e)
-    {
-        _updateCountdown--;
-        if (_updateCountdown <= 0)
+        if (_scanner.CurrentProgress.State is ScanState.Preparing or ScanState.Running or ScanState.Paused or ScanState.Cancelling)
         {
-            StopUpdateCountdown();
-            UpdateNowButton_Click(this, new RoutedEventArgs());
-            return;
+            var proceed = await _dialogs.ConfirmAsync(
+                "扫描正在进行",
+                "立即更新会关闭应用并中断当前扫描，未完成的扫描结果可能不完整。是否继续？",
+                "中断扫描并更新",
+                danger: true);
+            if (!proceed) return;
         }
-        UpdateBannerSub.Text = $"将在 {_updateCountdown} 秒后自动重启以完成升级；点击「立即更新」马上升级，或「稍后」本次不更新。";
-    }
-
-    private void UpdateNowButton_Click(object sender, RoutedEventArgs e)
-    {
-        StopUpdateCountdown();
         _updater.ApplyAndRestart();
     }
 
     private void UpdateLaterButton_Click(object sender, RoutedEventArgs e)
     {
         _updateDeferred = true;
-        StopUpdateCountdown();
         UpdateBanner.Visibility = Visibility.Collapsed;
     }
 

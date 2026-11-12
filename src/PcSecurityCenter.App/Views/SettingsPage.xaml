@@ -33,11 +33,14 @@
                         <TextBox Text="{Binding RealtimePollSec}" Width="80" />
                     </StackPanel>
                     <CheckBox Content="自动更新 Defender 病毒库（每日启动时）" IsChecked="{Binding AutoUpdateSignatures}" Margin="0,0,0,6" />
-                    <TextBlock Text="隐私与联网" FontWeight="Bold" Margin="0,14,0,10" />
-                    <CheckBox Content="启用哈希信誉查询（可选；需自行配置 API Key 并知晓哈希会被发送）" IsChecked="{Binding HashLookupEnabled}" Margin="0,0,0,6" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="日志保留天数（1-3650）：" FontSize="12.5" VerticalAlignment="Center" />
+                        <TextBox Text="{Binding MaxLogDays}" Width="80" />
+                    </StackPanel>
+                    <TextBlock Text="扫描排除路径（每行一个，也支持分号分隔；仅影响 SmartRisk 提示）" FontWeight="Bold" Margin="0,14,0,6" />
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="API Key：" FontSize="12.5" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding HashLookupApiKey}" Width="280" />
+                        <TextBox Text="{Binding ScanExclusions, UpdateSourceTrigger=PropertyChanged}" Width="470" MinHeight="64"
+                                 AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                     </StackPanel>
                 </StackPanel>
             </Border>

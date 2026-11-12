@@ -82,10 +82,8 @@ public partial class UpdateViewModel : ObservableObject
     private async Task CheckAsync()
     {
         if (!CanCheck) return;
-        var result = await _updater.CheckAsync(forceRefresh: true);
-        // 实时检查确认有新版本后自动下载；缓存结果仅供参考，避免仅凭旧数据启动升级。
-        if (result.IsUpdateAvailable && !result.IsFromCache)
-            await _updater.DownloadAsync();
+        // 检测与下载分离，避免启动或一次点击就下载约百 MB 安装包。
+        await _updater.CheckAsync(forceRefresh: true);
     }
 
     [RelayCommand]

@@ -1,0 +1,25 @@
+{
+  "taskId": "evolution-2026-11-12",
+  "status": "PARTIAL",
+  "phase": "implementation-and-verification",
+  "updatedAt": "2026-11-12T03:00:00+08:00",
+  "completed": [
+    "project identity and workspace safety audit",
+    "OneDrive placeholder hydration from remote snapshot",
+    "P1 settings persistence and log retention wiring",
+    "P1 SmartRisk exclusions and low-signal rule tuning",
+    "P1 realtime process identity and event de-duplication",
+    "P1 update download and scan restart safety",
+    "release build and focused tests",
+    "publish.ps1 full build-test-package pipeline",
+    "portable ZIP, installer, and SHA256SUMS artifact verification",
+    "branch cleanup: local main restored and tracking origin/main; no extra branches found"
+  ],
+  "blockedOrPending": [
+    "full scan real-machine validation",
+    "real Defender threat remediation validation",
+    "Windows UI manual validation",
+    "elevated installer install/rollback validation",
+    "signed update end-to-end validation"
+  ]
+}

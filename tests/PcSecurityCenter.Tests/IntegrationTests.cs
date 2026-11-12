@@ -148,7 +148,10 @@ public class ConfigServiceTests : IDisposable
         cfg1.Current.RealtimeEnabled = false;
         cfg1.Current.HashLookupEnabled = true;
         cfg1.Current.HashLookupApiKey = "key-123";
-        await cfg1.SaveAsync();
+        Assert.True(await cfg1.SaveAsync());
+        cfg1.Current.MaxLogDays = 45;
+        cfg1.Current.ScanExclusions = "C:\\build;C:\\temp";
+        Assert.True(await cfg1.SaveAsync());
 
         var cfg2 = new ConfigService(file);
         await cfg2.LoadAsync();
@@ -156,6 +159,8 @@ public class ConfigServiceTests : IDisposable
         Assert.False(cfg2.Current.RealtimeEnabled);
         Assert.True(cfg2.Current.HashLookupEnabled);
         Assert.Equal("key-123", cfg2.Current.HashLookupApiKey);
+        Assert.Equal(45, cfg2.Current.MaxLogDays);
+        Assert.Equal("C:\\build;C:\\temp", cfg2.Current.ScanExclusions);
     }
 
     [Fact]
@@ -348,6 +353,8 @@ public class DefenderClientIntegrationTests
     {
         var client = new DefenderClient();
         if (!client.IsAvailable || client.MpCmdRunPath == null) return; // 环境不具备则跳过
+        var status = await client.GetStatusAsync();
+        if (!status.EngineAvailable) return; // 系统服务存在但当前引擎未就绪时跳过真实扫描
         var temp = Path.Combine(Path.GetTempPath(), $"psc_scan_{Guid.NewGuid():N}.txt");
         await File.WriteAllTextAsync(temp, "definitely harmless test content for scanner");
         try

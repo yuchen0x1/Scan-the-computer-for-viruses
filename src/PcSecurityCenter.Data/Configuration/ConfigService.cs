@@ -49,17 +49,19 @@ public class ConfigService : IConfigService
         return Task.CompletedTask;
     }
 
-    public async Task SaveAsync()
+    public async Task<bool> SaveAsync()
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_configFile)!);
             var json = JsonSerializer.Serialize(Current, JsonOpts);
             await File.WriteAllTextAsync(_configFile, json);
+            return true;
         }
         catch (Exception ex)
         {
             Serilog.Log.Warning(ex, "配置保存失败");
+            return false;
         }
     }
 }
@@ -87,15 +89,17 @@ public static class AppPaths
 /// <summary>Serilog 日志初始化。</summary>
 public static class LoggingSetup
 {
-    public static void Initialize()
+    public static void Initialize(AppConfigData? config = null)
     {
         AppPaths.EnsureAll();
+        var retainedDays = Math.Clamp(config?.MaxLogDays ?? 30, 1, 3650);
+        Serilog.Log.CloseAndFlush();
         Serilog.Log.Logger = new Serilog.LoggerConfiguration()
             .MinimumLevel.Information()
             .WriteTo.File(
                 Path.Combine(AppPaths.LogsDir, "psec-.log"),
                 rollingInterval: Serilog.RollingInterval.Day,
-                retainedFileCountLimit: 30,
+                retainedFileCountLimit: retainedDays,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}",
                 shared: true)
             .CreateLogger();

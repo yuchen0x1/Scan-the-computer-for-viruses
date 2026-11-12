@@ -31,13 +31,16 @@ public sealed class UpdateCheckResult
 }
 
 /// <summary>
-/// 内置自动更新器：每次启动时调用 <see cref="CheckAsync"/> 检测 GitHub Releases 上的新版本；
-/// 若有新版本则 <see cref="DownloadAsync"/> 自动下载安装包，<see cref="ApplyAndRestart"/> 静默
-/// 运行安装程序并退出当前进程以完成更新。所有网络操作均带超时与异常保护，绝不阻塞或拖垮启动流程。
+/// 内置更新器：启动时只检查 GitHub Releases；下载与应用由用户在更新中心明确触发。
+/// <see cref="ApplyAndRestart"/> 运行经过校验的安装程序并退出当前进程以完成更新。
+/// 所有网络操作均带超时与异常保护，绝不阻塞或拖垮启动流程。
 /// </summary>
 public sealed class UpdaterService
 {
-    // 公开仓库的 Releases API（无需鉴权；调用方机器需可访问 github.com）。
+    // 公开仓库的多级更新来源。优先静态清单和 Atom，避免匿名 REST API 限流导致误报离线。
+    private const string RepositoryBase = "https://github.com/yuchen0x1/Scan-the-computer-for-viruses";
+    private const string ManifestLatest = RepositoryBase + "/releases/latest/download/update.json";
+    private const string AtomReleases = RepositoryBase + "/releases.atom";
     private const string ApiReleases = "https://api.github.com/repos/yuchen0x1/Scan-the-computer-for-viruses/releases?per_page=10";
 
     private readonly HttpClient _http;
@@ -88,8 +91,7 @@ public sealed class UpdaterService
         _releaseCachePath = Path.Combine(cacheDir, "github-releases.json");
         LoadReleaseCache();
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-        // GitHub API 要求必须携带 User-Agent，否则返回 403。
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("PcSecurityCenter-App");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("PcSecurityCenter-App/1.2");
         _http.DefaultRequestHeaders.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
@@ -174,6 +176,40 @@ public sealed class UpdaterService
         await _releaseGate.WaitAsync();
         try
         {
+            // 1) 发布工作流生成的静态清单：低频、结构稳定，包含资产 URL/大小/SHA256。
+            try
+            {
+                var manifestJson = await GetTextAsync(ManifestLatest, "application/json");
+                var manifest = ReleaseParser.ParseUpdateManifest(manifestJson)
+                    .Where(r => !r.Draft && !r.Prerelease)
+                    .ToList();
+                if (manifest.Count > 0 && manifest[0].SetupAsset is not null)
+                    return CacheReleases(manifest, manifestJson, "静态 update.json");
+                throw new InvalidDataException("update.json 缺少可用安装包");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "静态更新清单不可用，继续尝试 Atom feed");
+            }
+
+            // 2) GitHub Releases Atom feed：匿名可访问，不消耗 REST API 配额。
+            try
+            {
+                var atomXml = await GetTextAsync(AtomReleases, "application/atom+xml");
+                var atom = ReleaseParser.ParseAtomFeed(atomXml)
+                    .Where(r => !r.Draft && !r.Prerelease && VersionUtility.ParseVersion(r.Version) is not null)
+                    .ToList();
+                AddDeterministicGithubAssets(atom);
+                if (atom.Count > 0 && atom[0].SetupAsset is not null)
+                    return CacheReleases(atom, atomXml, "GitHub Releases Atom");
+                throw new InvalidDataException("Atom feed 未返回可用正式 Release");
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Debug(ex, "GitHub Atom feed 不可用，继续尝试 REST API");
+            }
+
+            // 3) REST API 作为兼容兜底；匿名请求可能遇到 403 rate limit。
             using var request = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
             if (!string.IsNullOrWhiteSpace(_releasesEtag) && EntityTagHeaderValue.TryParse(_releasesEtag, out var etag))
                 request.Headers.IfNoneMatch.Add(etag);
@@ -189,25 +225,68 @@ public sealed class UpdaterService
             var parsed = ReleaseParser.ParseReleases(json)
                 .Where(r => !r.Draft && !r.Prerelease)
                 .ToList();
+            AddDeterministicGithubAssets(parsed);
             if (parsed.Count == 0) throw new InvalidDataException("GitHub 未返回任何正式 Release");
-
-            lock (_releaseSync)
-            {
-                _cachedReleases = parsed;
-                _releasesFetchedAt = DateTime.UtcNow;
-                _releasesEtag = response.Headers.ETag?.ToString() ?? _releasesEtag;
-                SaveReleaseCache(json);
-            }
-            _releaseCacheNote = null;
-            return parsed;
+            return CacheReleases(parsed, json, "GitHub REST API", response.Headers.ETag?.ToString());
         }
         catch (Exception ex) when (_cachedReleases.Count > 0)
         {
-            _releaseCacheNote = $"GitHub 暂不可用（{ex.Message}），使用缓存于 {_releasesFetchedAt.ToLocalTime():yyyy-MM-dd HH:mm} 获取的 Release；这不是实时检查结果。";
-            Serilog.Log.Warning(ex, "GitHub Release 请求失败，回退到本地缓存");
+            _releaseCacheNote = $"在线更新源暂不可用（{ex.Message}），使用缓存于 {_releasesFetchedAt.ToLocalTime():yyyy-MM-dd HH:mm} 获取的 Release；这不是实时检查结果。";
+            Serilog.Log.Warning(ex, "在线更新源请求失败，回退到本地缓存");
             return _cachedReleases;
         }
         finally { _releaseGate.Release(); }
+    }
+
+    private async Task<string> GetTextAsync(string url, string accept)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(accept));
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cts.Token);
+    }
+
+    private List<ReleaseInfo> CacheReleases(List<ReleaseInfo> releases, string payload, string source, string? etag = null)
+    {
+        lock (_releaseSync)
+        {
+            _cachedReleases = releases;
+            _releasesFetchedAt = DateTime.UtcNow;
+            _releasesEtag = etag ?? _releasesEtag;
+            SaveReleaseCache(payload, source);
+        }
+        _releaseCacheNote = null;
+        return releases;
+    }
+
+    private static void AddDeterministicGithubAssets(IEnumerable<ReleaseInfo> releases)
+    {
+        foreach (var release in releases)
+        {
+            var version = VersionUtility.ParseVersion(release.Version)?.ToString(3);
+            if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(release.Tag)) continue;
+            var tag = Uri.EscapeDataString(release.Tag);
+            var setupName = $"PcSecurityCenter-Setup-{version}.exe";
+            var checksumName = "SHA256SUMS.txt";
+            var baseUrl = $"{RepositoryBase}/releases/download/{tag}/";
+            if (release.SetupAsset is null)
+                release.Assets.Add(new ReleaseAsset
+                {
+                    Name = setupName,
+                    DownloadUrl = baseUrl + Uri.EscapeDataString(setupName),
+                    ContentType = "application/octet-stream",
+                });
+            if (release.ChecksumsAsset is null)
+                release.Assets.Add(new ReleaseAsset
+                {
+                    Name = checksumName,
+                    DownloadUrl = baseUrl + checksumName,
+                    ContentType = "text/plain",
+                });
+        }
     }
 
     private void LoadReleaseCache()
@@ -217,12 +296,21 @@ public sealed class UpdaterService
             if (!File.Exists(_releaseCachePath)) return;
             using var doc = JsonDocument.Parse(File.ReadAllText(_releaseCachePath));
             var root = doc.RootElement;
-            var json = root.GetProperty("releasesJson").GetString();
-            if (string.IsNullOrWhiteSpace(json)) return;
-            var releases = ReleaseParser.ParseReleases(json)
+            var payload = root.TryGetProperty("payload", out var payloadElement)
+                ? payloadElement.GetString()
+                : root.TryGetProperty("releasesJson", out var oldPayload) ? oldPayload.GetString() : null;
+            if (string.IsNullOrWhiteSpace(payload)) return;
+            var source = root.TryGetProperty("source", out var sourceElement) ? sourceElement.GetString() : null;
+            var releases = (source switch
+            {
+                "静态 update.json" => ReleaseParser.ParseUpdateManifest(payload),
+                "GitHub Releases Atom" => ReleaseParser.ParseAtomFeed(payload),
+                _ => ReleaseParser.ParseReleases(payload),
+            })
                 .Where(r => !r.Draft && !r.Prerelease)
                 .ToList();
             if (releases.Count == 0) return;
+            AddDeterministicGithubAssets(releases);
             _cachedReleases = releases;
             _releasesFetchedAt = root.TryGetProperty("fetchedAtUtc", out var ts)
                                  && DateTime.TryParse(ts.GetString(), out var dt) ? dt.ToUniversalTime() : DateTime.MinValue;
@@ -232,7 +320,7 @@ public sealed class UpdaterService
         catch (Exception ex) { Serilog.Log.Debug(ex, "忽略无效的更新缓存"); }
     }
 
-    private void SaveReleaseCache(string json)
+    private void SaveReleaseCache(string payload, string source)
     {
         try
         {
@@ -243,7 +331,8 @@ public sealed class UpdaterService
             {
                 fetchedAtUtc = _releasesFetchedAt.ToString("O"),
                 etag = _releasesEtag,
-                releasesJson = json,
+                source,
+                payload,
             });
             File.WriteAllText(temp, content);
             if (File.Exists(_releaseCachePath)) File.Replace(temp, _releaseCachePath, null);
@@ -285,52 +374,36 @@ public sealed class UpdaterService
             Directory.CreateDirectory(_downloadDir);
             var dest = Path.Combine(_downloadDir, fileName);
             var part = dest + ".part";
-
-            long read;
-            string sha256;
-            using (var headCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            Exception? last = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                // 分阶段超时：连接+响应头 30s，之后流式读取每 60s 必须有进展，避免大文件被整体超时掐断。
-                headCts.CancelAfter(TimeSpan.FromSeconds(30));
-                using var resp = await _downloadHttp.GetAsync(
-                    asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, headCts.Token);
-                resp.EnsureSuccessStatusCode();
-                var total = resp.Content.Headers.ContentLength ?? asset.Size;
-
-                await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
-                await using var fs = File.Create(part);
-                using var hasher = SHA256.Create();
-                var buffer = new byte[81920];
-                read = 0;
-                int n;
-                using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                while (true)
+                try
                 {
-                    idleCts.CancelAfter(TimeSpan.FromSeconds(60));
-                    n = await src.ReadAsync(buffer, idleCts.Token);
-                    if (n <= 0) break;
-                    await fs.WriteAsync(buffer.AsMemory(0, n), cancellationToken);
-                    hasher.TransformBlock(buffer, 0, n, null, 0);
-                    read += n;
-                    if (total > 0)
-                    {
-                        DownloadProgressPercent = (int)(read * 100 / total);
-                        DownloadProgressChanged?.Invoke(this, DownloadProgressPercent);
-                    }
+                    var (read, sha256) = await DownloadPartAsync(asset, part, cancellationToken);
+                    if (asset.Size > 0 && read != asset.Size)
+                        throw new InvalidDataException($"下载不完整：期望 {asset.Size} 字节，实际 {read} 字节");
+
+                    await VerifyDownloadedPackageAsync(fileName, part, sha256, cancellationToken);
+                    File.Move(part, dest, overwrite: true);
+                    DownloadedPath = dest;
+                    VerifiedSha256 = sha256;
+                    State = UpdateState.Ready;
+                    last = null;
+                    break;
                 }
-                hasher.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-                sha256 = Convert.ToHexString(hasher.Hash!).ToLowerInvariant();
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    last = ex;
+                    try { if (File.Exists(part)) File.Delete(part); } catch { }
+                    if (attempt < 3)
+                        await Task.Delay(TimeSpan.FromSeconds(attempt), cancellationToken);
+                }
             }
-
-            if (asset.Size > 0 && read != asset.Size)
-                throw new InvalidDataException($"下载不完整：期望 {asset.Size} 字节，实际 {read} 字节");
-
-            await VerifyDownloadedPackageAsync(fileName, part, sha256, cancellationToken);
-
-            File.Move(part, dest, overwrite: true);
-            DownloadedPath = dest;
-            VerifiedSha256 = sha256;
-            State = UpdateState.Ready;
+            if (last is not null) throw last;
         }
         catch (Exception ex)
         {
@@ -338,6 +411,40 @@ public sealed class UpdaterService
             State = UpdateState.Error;
             Serilog.Log.Warning(ex, "更新包下载失败");
         }
+    }
+
+    private async Task<(long Read, string Sha256)> DownloadPartAsync(
+        ReleaseAsset asset, string part, CancellationToken cancellationToken)
+    {
+        using var headCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        headCts.CancelAfter(TimeSpan.FromSeconds(30));
+        using var resp = await _downloadHttp.GetAsync(
+            asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, headCts.Token);
+        resp.EnsureSuccessStatusCode();
+        var total = resp.Content.Headers.ContentLength ?? asset.Size;
+
+        await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fs = File.Create(part);
+        using var hasher = SHA256.Create();
+        var buffer = new byte[81920];
+        long read = 0;
+        using var idleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        while (true)
+        {
+            idleCts.CancelAfter(TimeSpan.FromSeconds(60));
+            var n = await src.ReadAsync(buffer, idleCts.Token);
+            if (n <= 0) break;
+            await fs.WriteAsync(buffer.AsMemory(0, n), cancellationToken);
+            hasher.TransformBlock(buffer, 0, n, null, 0);
+            read += n;
+            if (total > 0)
+            {
+                DownloadProgressPercent = Math.Min(100, (int)(read * 100 / total));
+                DownloadProgressChanged?.Invoke(this, DownloadProgressPercent);
+            }
+        }
+        hasher.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return (read, Convert.ToHexString(hasher.Hash!).ToLowerInvariant());
     }
 
     /// <summary>
@@ -348,6 +455,12 @@ public sealed class UpdaterService
         string fileName, string filePath, string sha256, CancellationToken cancellationToken)
     {
         var hasChecksum = false;
+        if (!string.IsNullOrWhiteSpace(LatestRelease?.SetupAsset?.Sha256))
+        {
+            if (!string.Equals(LatestRelease.SetupAsset.Sha256, sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("update.json 中的 SHA256 与下载文件不匹配");
+            hasChecksum = true;
+        }
         if (LatestRelease?.ChecksumsAsset is { } sums)
         {
             if (!IsTrustedDownloadHost(sums.DownloadUrl))

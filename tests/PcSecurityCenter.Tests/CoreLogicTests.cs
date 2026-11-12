@@ -303,6 +303,49 @@ public class SmartRiskEngineTests
         }
         finally { File.Delete(temp); }
     }
+
+    [Fact]
+    public async Task Engine_ExclusionPath_SuppressesSmartRiskResult()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "psc_exclusion_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var fake = Path.Combine(temp, "invoice.pdf.exe");
+        await File.WriteAllBytesAsync(fake, new byte[] { 0x4D, 0x5A, 0x90, 0x00 });
+        try
+        {
+            var engine = new SmartRiskEngine();
+            var ctx = new ScanContext
+            {
+                Type = ScanType.Quick,
+                ScanRunId = Guid.NewGuid(),
+                RootPaths = new[] { temp },
+                ExcludedPaths = new[] { temp },
+            };
+            var found = new List<ThreatInfo>();
+            await foreach (var t in engine.ScanFilesAsync(new[] { fake }, ctx, CancellationToken.None)) found.Add(t);
+            Assert.Empty(found);
+        }
+        finally { Directory.Delete(temp, true); }
+    }
+
+    [Fact]
+    public async Task Engine_CleanPowerShellInTemp_IsLowNotice()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "psc_low_signal_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var script = Path.Combine(temp, "build.cmd");
+        await File.WriteAllTextAsync(script, "echo build");
+        try
+        {
+            var engine = new SmartRiskEngine();
+            var found = new List<ThreatInfo>();
+            await foreach (var t in engine.ScanFilesAsync(new[] { script }, new ScanContext { Type = ScanType.Quick }, CancellationToken.None)) found.Add(t);
+            var result = Assert.Single(found);
+            Assert.Equal(ThreatSeverity.Low, result.Severity);
+            Assert.Equal(DetectionKind.Notice, result.Kind);
+        }
+        finally { Directory.Delete(temp, true); }
+    }
 }
 
 /// <summary>HTML 报告构建。</summary>

@@ -4,7 +4,7 @@
 #define AppName "Windows 智能安全卫士"
 #define AppNameEn "PC Security Center"
 #ifndef AppVersion
-  #define AppVersion "1.2.2"
+  #define AppVersion "1.2.3"
 #endif
 #define AppExe "PcSecurityCenter.App.exe"
 #define PublishDir "..\publish\selfcontained"
