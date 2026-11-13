@@ -365,7 +365,7 @@ public class HtmlReportBuilderTests
             },
             Scans = new List<ScanRunRecord>
             {
-                new() { Type = ScanType.Quick, StartedAt = DateTime.Now, FinalState = ScanState.Completed, FilesScanned = 100, ThreatsFound = 1, Engines = "Defender" },
+                new() { Type = ScanType.Quick, StartedAt = DateTime.Now, FinalState = ScanState.Completed, FilesScanned = 100, ThreatsFound = 1, Engines = "Defender", UncoveredNotes = "engine failed <detail>" },
             },
             Threats = new List<ThreatInfo> { new() { Name = "威胁", FilePath = @"C:\evil.exe", Engine = "Defender", Evidence = "test" } },
         };
@@ -376,6 +376,8 @@ public class HtmlReportBuilderTests
         Assert.Contains("威胁与风险", html);
         Assert.Contains("覆盖范围与限制", html);
         // 转义验证：主机名与检查名中的尖括号必须转义
+        Assert.Contains("engine failed &lt;detail&gt;", html);
+        Assert.DoesNotContain("engine failed <detail>", html);
         Assert.Contains("TEST&lt;PC&gt;", html);
         Assert.Contains("检查项 &lt;A&gt;", html);
         Assert.DoesNotContain("TEST<PC>", html);

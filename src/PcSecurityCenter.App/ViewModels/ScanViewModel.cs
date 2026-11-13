@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.ComponentModel;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PcSecurityCenter.Core.Abstractions;
@@ -23,6 +25,7 @@ public partial class ScanViewModel : ObservableObject
 
     public ScanProgress Progress => _scanner.CurrentProgress;
 
+    [NotifyCanExecuteChangedFor(nameof(PauseCommand), nameof(ResumeCommand), nameof(CancelCommand))]
     [ObservableProperty] private ScanState _scanState = ScanState.Idle;
     [ObservableProperty] private string _scanStateText = "空闲";
     [ObservableProperty] private string _scanMessage = "选择扫描类型开始检测。快速扫描约 1-5 分钟；全盘扫描耗时较长且支持暂停/继续/取消。";
@@ -36,6 +39,22 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private string _signatureText = "…";
     [ObservableProperty] private bool _defenderAvailable;
     [ObservableProperty] private bool _isScanning;
+    [ObservableProperty] private string _coverageWarnings = "";
+    [ObservableProperty] private bool _isEstimating;
+    [ObservableProperty] private string _threatSearch = "";
+    [ObservableProperty] private bool _confirmedOnly;
+    public ICollectionView ThreatsView { get; }
+    public bool CanStartScan => !IsScanning;
+    public string ThreatCountText => $"显示 {ThreatsView.Cast<object>().Count()} / 共 {Threats.Count} 条";
+    partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(CanStartScan));
+    partial void OnThreatSearchChanged(string value) => RefreshThreatFilter();
+    partial void OnConfirmedOnlyChanged(bool value) => RefreshThreatFilter();
+    private void RefreshThreatFilter()
+    {
+        ThreatsView.Refresh();
+        OnPropertyChanged(nameof(ThreatCountText));
+    }
+
 
     public ObservableCollection<ThreatInfo> Threats { get; } = new();
     public ObservableCollection<QuarantineEntry> QuarantineEntries { get; } = new();
@@ -54,25 +73,30 @@ public partial class ScanViewModel : ObservableObject
         _events = events;
         _dialogs = dialogs;
         _config = config;
+        ThreatsView = CollectionViewSource.GetDefaultView(Threats);
+        ThreatsView.Filter = item => item is ThreatInfo t &&
+            (!ConfirmedOnly || t.Kind == DetectionKind.Confirmed) &&
+            (string.IsNullOrWhiteSpace(ThreatSearch) ||
+             new[] { t.Name, t.FilePath, t.Engine, t.Evidence }.Any(v => v.Contains(ThreatSearch.Trim(), StringComparison.OrdinalIgnoreCase)));
+        Threats.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ThreatCountText));
 
         _scanner.ProgressChanged += (_, p) => Ui.Post(() => OnProgress(p));
         _scanner.ThreatFound += (_, t) =>
         {
-            if (!_seenThreats.Add(t.FilePath + "|" + t.Name)) return; // HashSet 查重：避免 O(n²)
-            Ui.Post(() =>
-            {
-                Threats.Insert(0, t);
-                _ = Task.Run(() => _threatRepo.Upsert(t)); // 写库离线程，不占 UI
-            });
+            lock (_persistenceGate)
+                _pendingWrites.Add(Task.Run(() => _threatRepo.Upsert(t)));
+            Ui.Post(() => Threats.Insert(0, t));
         };
-        _scanner.Completed += async (_, p) => await OnScanCompletedAsync(p);
+        _scanner.Completed += (_, p) => _completionTask = OnScanCompletedAsync(p);
 
         _ = LoadDefenderStatusAsync();
         _ = LoadThreatsAsync();
         _ = LoadQuarantineAsync();
     }
 
-    private readonly HashSet<string> _seenThreats = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _persistenceGate = new();
+    private readonly List<Task> _pendingWrites = new();
+    private Task _completionTask = Task.CompletedTask;
     // 进度事件约 33 次/秒，全部写入绑定额外造成每秒上百次重排。
     // 这里按 150ms 节流（约 6-7 次/秒），扫描状态类字段仍然实时更新。
     private DateTime _lastProgressUi = DateTime.MinValue;
@@ -164,26 +188,34 @@ public partial class ScanViewModel : ObservableObject
     {
         if (IsScanning) return;
         Threats.Clear();
+        lock (_persistenceGate) _pendingWrites.Clear();
+        _completionTask = Task.CompletedTask;
+        _lastProgressUi = DateTime.MinValue;
         IsScanning = true;
         ScanStateText = "准备中";
         try
         {
             await _scanner.StartAsync(request);
+            await _completionTask;
         }
         catch (Exception ex)
         {
             ScanMessage = "扫描启动失败：" + ex.Message;
-            IsScanning = false;
         }
+        finally { IsScanning = false; }
     }
 
-    [RelayCommand]
+    private bool CanPause() => ScanState == ScanState.Running;
+    private bool CanResume() => ScanState == ScanState.Paused;
+    private bool CanCancel() => ScanState is ScanState.Preparing or ScanState.Running or ScanState.Paused;
+
+    [RelayCommand(CanExecute = nameof(CanPause))]
     private void Pause() => _scanner.Pause();
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanResume))]
     private void Resume() => _scanner.Resume();
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanCancel))]
     private async Task CancelAsync() => await _scanner.CancelAsync();
 
     private void OnProgress(ScanProgress p)
@@ -192,7 +224,7 @@ public partial class ScanViewModel : ObservableObject
         var isTerminal = p.State is ScanState.Completed or ScanState.Cancelled or ScanState.Failed;
         var now = DateTime.UtcNow;
         _pendingProgress = p;
-        if (!isTerminal && (now - _lastProgressUi).TotalMilliseconds < 150) return;
+        if (!isTerminal && p.State == ScanState && (now - _lastProgressUi).TotalMilliseconds < 150) return;
         _lastProgressUi = now;
         ApplyProgress(_pendingProgress);
     }
@@ -206,12 +238,14 @@ public partial class ScanViewModel : ObservableObject
             ScanState.Running => "扫描中",
             ScanState.Paused => "已暂停",
             ScanState.Cancelling => "取消中",
-            ScanState.Completed => "已完成",
+            ScanState.Completed => string.IsNullOrEmpty(p.CoverageWarnings) ? "已完成" : "覆盖受限",
             ScanState.Cancelled => "已取消",
             ScanState.Failed => "失败",
             _ => "空闲",
         };
         ScanMessage = p.Message;
+        CoverageWarnings = p.CoverageWarnings;
+        IsEstimating = p.IsEstimating;
         Percent = p.Percent;
         FilesScanned = p.FilesScanned;
         FilesTotal = p.FilesTotal;
@@ -220,61 +254,51 @@ public partial class ScanViewModel : ObservableObject
         ElapsedText = p.Elapsed > TimeSpan.FromSeconds(0.5)
             ? $"{(int)p.Elapsed.TotalMinutes:00}:{p.Elapsed.Seconds:00}"
             : "";
-        IsScanning = p.State is ScanState.Running or ScanState.Preparing or ScanState.Paused or ScanState.Cancelling;
+        // 扫描结果与历史落库完成前保持操作锁，避免新扫描混入旧扫描收尾。
     }
 
     private async Task OnScanCompletedAsync(ScanProgress p)
     {
-        Ui.Post(() =>
-        {
-            IsScanning = false;
-            OnProgress(p);
-        });
-
-        // 记录扫描历史。Id 必须与本次扫描的 RunId 一致，
-        // 否则威胁记录的 scan_run_id 永远匹配不到扫描记录（历史上正是如此）。
-        var record = new ScanRunRecord
-        {
-            Id = p.RunId == Guid.Empty ? Guid.NewGuid() : p.RunId,
-            Type = p.Type,
-            StartedAt = DateTime.Now - p.Elapsed,
-            FinishedAt = DateTime.Now,
-            FinalState = p.State,
-            FilesScanned = p.FilesScanned,
-            ThreatsFound = p.ThreatsFound,
-            Engines = p.EngineName,
-            Scope = p.Message,
-            UncoveredNotes = "扫描未包含内存驻留检测与网络行为分析；Defender 原生快速扫描覆盖系统内存与启动区域。",
-        };
-        _scanRepo.Insert(record);
-        if (p.Type == ScanType.Quick) _config.Current.LastQuickScanTime = DateTime.Now;
-        if (p.Type == ScanType.Full) _config.Current.LastFullScanTime = DateTime.Now;
-        await _config.SaveAsync();
-
-        await _events.PublishAsync(new SecurityEvent
-        {
-            Type = SecurityEventType.SystemCheck,
-            Severity = p.ThreatsFound > 0 ? ThreatSeverity.Medium : ThreatSeverity.Info,
-            Title = $"{ScanTypeName(p.Type)}完成",
-            Detail = $"检查 {p.FilesScanned} 个文件，发现 {p.ThreatsFound} 项风险。",
-        });
-
-        // 补充 Defender 原生扫描产生、且属于本次扫描时间窗口的记录。
-        // Get-MpThreatDetection 返回最近 30 天记录，不能把其中的历史项关联到当前 RunId。
         try
         {
-            var scanStartedAt = record.StartedAt.AddSeconds(-5);
-            var dets = await _defender.GetThreatDetectionsAsync();
-            foreach (var d in dets)
-                if (d.DetectedAt >= scanStartedAt &&
-                    !Threats.Any(x => x.FilePath == d.FilePath && x.Engine == d.Engine))
-                {
-                    d.ScanRunId = record.Id;
-                    Threats.Insert(0, d);
-                    _threatRepo.Upsert(d);
-                }
+            Ui.Post(() => OnProgress(p));
+            Task[] writes;
+            lock (_persistenceGate) writes = _pendingWrites.ToArray();
+            await Task.WhenAll(writes);
+            // 记录扫描历史。Id 必须与本次扫描的 RunId 一致，
+            // 否则威胁记录的 scan_run_id 永远匹配不到扫描记录（历史上正是如此）。
+            var record = new ScanRunRecord
+            {
+                Id = p.RunId == Guid.Empty ? Guid.NewGuid() : p.RunId,
+                Type = p.Type,
+                StartedAt = DateTime.Now - p.Elapsed,
+                FinishedAt = DateTime.Now,
+                FinalState = p.State,
+                FilesScanned = p.FilesScanned,
+                ThreatsFound = p.ThreatsFound,
+                Engines = p.EngineName,
+                Scope = p.Scope,
+                UncoveredNotes = p.CoverageWarnings + "\n文件计数为本工具枚举量，不代表 Defender 实际检测文件数；跳过不可访问路径与重解析点，不覆盖网络行为分析。",
+            };
+            await Task.Run(() => _scanRepo.Insert(record));
+            if (p.State == ScanState.Completed && string.IsNullOrEmpty(p.CoverageWarnings) && p.Type == ScanType.Quick) _config.Current.LastQuickScanTime = DateTime.Now;
+            if (p.State == ScanState.Completed && string.IsNullOrEmpty(p.CoverageWarnings) && p.Type == ScanType.Full) _config.Current.LastFullScanTime = DateTime.Now;
+            if (!await _config.SaveAsync()) throw new IOException("扫描记录已保存，但配置保存失败。");
+
+            await _events.PublishAsync(new SecurityEvent
+            {
+                Type = SecurityEventType.SystemCheck,
+                Severity = p.ThreatsFound > 0 ? ThreatSeverity.Medium : ThreatSeverity.Info,
+                Title = $"{ScanTypeName(p.Type)}：{p.State}",
+                Detail = p.Message + "\n" + p.CoverageWarnings,
+            });
+
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "扫描结果保存失败");
+            Ui.Post(() => ScanMessage = p.Message + " 结果保存失败：" + ex.Message);
+        }
     }
 
     private static string ScanTypeName(ScanType t) => t switch
@@ -286,47 +310,28 @@ public partial class ScanViewModel : ObservableObject
     [RelayCommand]
     private async Task QuarantineThreatAsync(object? param)
     {
+        if (IsScanning) return; // 等待本次结果落库后才能修改处理状态。
         if (param is not ThreatInfo t) return;
         var danger = t.Engine == "MicrosoftDefender";
-        // Defender 记录必须带威胁 ID 才能定点处理；没有 ID 时不能退化成"清除全部威胁"。
-        if (danger && (t.DefenderThreatId is null or <= 0))
+        if (danger)
         {
-            await _dialogs.InfoAsync("无法处理该记录",
-                $"这条记录没有可用的 Defender 威胁 ID，本工具无法只处理它。\n\n文件：{t.FilePath}\n\n请在 Windows 安全中心（病毒和威胁防护 → 保护历史记录）中处理；若确认该文件无害，也可使用本工具的加密隔离区。");
+            await _dialogs.InfoAsync("请在 Windows 安全中心处理",
+                "Defender 官方 Remove-MpThreat 只能处理全部活动威胁，不能按本条记录定点隔离。请打开 Windows 安全中心 → 病毒和威胁防护 → 保护历史记录，核对该文件后处理。\n\n" + t.FilePath);
             return;
         }
 
         var ok = await _dialogs.ConfirmAsync("隔离威胁",
-            $"将隔离：{t.FilePath}\n\n" + (danger
-                ? $"该威胁由 Microsoft Defender 检出（ThreatID {t.DefenderThreatId}），将通过 Defender 官方接口只处理这一条记录，其他威胁记录不受影响。"
-                : "该文件将移入本工具加密隔离区（AES-256），可随时恢复或彻底删除。"),
+            $"将隔离：{t.FilePath}\n\n该文件将移入本工具加密隔离区（AES-256），可恢复或彻底删除。",
             "执行隔离", danger: true);
         if (!ok) return;
 
         try
         {
-            if (danger)
-            {
-                var r = await _defender.RemoveThreatAsync(t.DefenderThreatId!.Value);
-                if (r)
-                {
-                    t.Status = ThreatStatus.Quarantined;
-                    _threatRepo.UpdateStatus(t.Id, ThreatStatus.Quarantined);
-                    await _dialogs.InfoAsync("威胁处理", $"已通过 Defender 官方接口处理威胁 {t.DefenderThreatId}。");
-                }
-                else
-                {
-                    await _dialogs.InfoAsync("威胁处理", "Defender 处理失败：威胁可能已被系统处理，或需要管理员权限。可打开 Windows 安全中心查看。");
-                }
-            }
-            else
-            {
-                var entry = await _quarantine.QuarantineFileAsync(t.FilePath, t.Evidence, t.Engine, t.Severity);
-                t.Status = ThreatStatus.Quarantined;
-                _threatRepo.UpdateStatus(t.Id, ThreatStatus.Quarantined);
-                QuarantineEntries.Insert(0, entry);
-                await _dialogs.InfoAsync("威胁处理", $"已隔离到安全区：{entry.VaultFileName}");
-            }
+            var entry = await _quarantine.QuarantineFileAsync(t.FilePath, t.Evidence, t.Engine, t.Severity);
+            t.Status = ThreatStatus.Quarantined;
+            _threatRepo.UpdateStatus(t.Id, ThreatStatus.Quarantined);
+            QuarantineEntries.Insert(0, entry);
+            await _dialogs.InfoAsync("威胁处理", $"已隔离到安全区：{entry.VaultFileName}");
             Threats.Remove(t);
         }
         catch (Exception ex)
@@ -339,19 +344,21 @@ public partial class ScanViewModel : ObservableObject
     [RelayCommand]
     private async Task AllowThreatAsync(object? param)
     {
+        if (IsScanning) return; // 等待本次结果落库后才能修改处理状态。
         if (param is not ThreatInfo t) return;
-        var ok = await _dialogs.ConfirmAsync("加入白名单/忽略",
-            $"将忽略此风险：{t.FilePath}\n\n加入白名单后本工具不再提示该项（不影响 Defender 实时防护对它的检测）。",
+        var ok = await _dialogs.ConfirmAsync("忽略本条记录",
+            $"将忽略此风险：{t.FilePath}\n\n仅标记本条检测记录为已忽略；后续扫描仍会重新检查该文件，不修改 Defender 排除项。",
             "忽略", danger: true);
         if (!ok) return;
-        t.Status = ThreatStatus.Allowed;
-        _threatRepo.UpdateStatus(t.Id, ThreatStatus.Allowed);
+        t.Status = ThreatStatus.Ignored;
+        _threatRepo.UpdateStatus(t.Id, ThreatStatus.Ignored);
         Threats.Remove(t);
     }
 
     [RelayCommand]
     private async Task DeleteThreatAsync(object? param)
     {
+        if (IsScanning) return; // 等待本次结果落库后才能修改处理状态。
         if (param is not ThreatInfo t) return;
         var ok = await _dialogs.ConfirmAsync("永久删除文件",
             $"将永久删除：{t.FilePath}\n\n该操作不可恢复！推荐使用「隔离」保留恢复可能性。",

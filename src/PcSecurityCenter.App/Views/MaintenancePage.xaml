@@ -11,11 +11,11 @@
                 <StackPanel>
                     <WrapPanel>
                         <Button Content="扫描可清理项" Style="{StaticResource PrimaryButton}" Margin="0,0,8,6"
-                                Command="{Binding ScanCleanableCommand}" IsEnabled="{Binding !IsBusy}" />
+                                Command="{Binding ScanCleanableCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         <Button Content="执行清理" Style="{StaticResource DangerButton}" Margin="0,0,8,6"
-                                Command="{Binding CleanCommand}" IsEnabled="{Binding !IsBusy}" />
+                                Command="{Binding CleanCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         <Button Content="分析磁盘空间" Style="{StaticResource GhostButton}" Margin="0,0,0,6"
-                                Command="{Binding AnalyzeDiskCommand}" IsEnabled="{Binding !IsBusy}" />
+                                Command="{Binding AnalyzeDiskCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                     </WrapPanel>
                     <DockPanel Margin="0,4,0,0" LastChildFill="True">
                         <Border Style="{StaticResource StatusPill}" DockPanel.Dock="Right" Margin="10,0,0,0"
@@ -82,14 +82,14 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock Text="系统文件检查 (SFC)" FontWeight="Bold" VerticalAlignment="Center" />
                             <Button Content="运行只读检查" Style="{StaticResource SmallGhostButton}" Margin="10,0,0,0"
-                                    Command="{Binding RunSfcCommand}" IsEnabled="{Binding !IsBusy}" />
+                                    Command="{Binding RunSfcCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                         <TextBox Text="{Binding SfcOutput, Mode=OneWay}" IsReadOnly="True" MinHeight="70" MaxHeight="180"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="11" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="磁盘错误检查 (chkdsk 只读)" FontWeight="Bold" VerticalAlignment="Center" />
                             <Button Content="运行检查" Style="{StaticResource SmallGhostButton}" Margin="10,0,0,0"
-                                    Command="{Binding RunChkdskCommand}" IsEnabled="{Binding !IsBusy}" />
+                                    Command="{Binding RunChkdskCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                         <TextBox Text="{Binding ChkOutput, Mode=OneWay}" IsReadOnly="True" MinHeight="50" MaxHeight="150"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="11" Margin="0,6,0,0" />
@@ -100,14 +100,14 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock Text="DISM 系统映像检查" FontWeight="Bold" VerticalAlignment="Center" />
                             <Button Content="运行 ScanHealth" Style="{StaticResource SmallGhostButton}" Margin="10,0,0,0"
-                                    Command="{Binding RunDismCommand}" IsEnabled="{Binding !IsBusy}" />
+                                    Command="{Binding RunDismCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                         <TextBox Text="{Binding DismOutput, Mode=OneWay}" IsReadOnly="True" MinHeight="70" MaxHeight="180"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontSize="11" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <TextBlock Text="系统还原点" FontWeight="Bold" VerticalAlignment="Center" />
                             <Button Content="查看" Style="{StaticResource SmallGhostButton}" Margin="10,0,0,0" Command="{Binding LoadRestorePointsCommand}" />
-                            <Button Content="创建还原点" Style="{StaticResource SmallGhostButton}" Margin="6,0,0,0" Command="{Binding CreateRestorePointCommand}" IsEnabled="{Binding !IsBusy}" />
+                            <Button Content="创建还原点" Style="{StaticResource SmallGhostButton}" Margin="6,0,0,0" Command="{Binding CreateRestorePointCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                         <TextBlock Text="{Binding RestorePointsText}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}" Margin="0,6,0,0" />
                         <ItemsControl ItemsSource="{Binding RestorePoints}" MaxHeight="120">

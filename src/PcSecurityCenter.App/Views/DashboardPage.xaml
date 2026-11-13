@@ -22,7 +22,7 @@
                                    Foreground="{DynamicResource BrushTextSecondary}"
                                    HorizontalAlignment="Center" Margin="0,6,0,12" TextAlignment="Center" />
                         <Button Content="一键全面体检" Style="{StaticResource PrimaryButton}"
-                                Command="{Binding FullCheckCommand}" IsEnabled="{Binding !IsChecking}"
+                                Command="{Binding FullCheckCommand}" IsEnabled="{Binding IsChecking, Converter={StaticResource InverseBool}}"
                                 HorizontalAlignment="Stretch" />
                         <Button Content="快速扫描入口 →" Style="{StaticResource GhostButton}"
                                 Command="{Binding QuickScanCommand}" Margin="0,8,0,0"

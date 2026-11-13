@@ -21,12 +21,23 @@ if ($LASTEXITCODE -ne 0 -or -not ($sdks | Select-String -SimpleMatch '10.0.')) {
     throw "未找到 .NET 10 SDK。请通过 -Dotnet 指定 SDK 路径，或把 SDK 目录加入 PATH。"
 }
 
-Write-Host '== 0. 停止正在运行的应用（避免锁定已发布 DLL） ==' -ForegroundColor Cyan
-Get-Process PcSecurityCenter.App -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "  停止进程 $($_.Id)"
-    Stop-Process -Id $_.Id -Force
+# 打包不终止用户正在使用的应用；文件锁冲突按构建错误返回。
+function Remove-PublishBuildDirectory([string]$relativePath) {
+    $publishRoot = [IO.Path]::GetFullPath((Join-Path $root 'publish'))
+    $target = [IO.Path]::GetFullPath((Join-Path $root $relativePath))
+    if (-not $target.StartsWith($publishRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove a directory outside publish: $target"
+    }
+    $cursor = $target
+    while ($cursor.Length -ge $publishRoot.Length) {
+        if (Test-Path -LiteralPath $cursor) {
+            $item = Get-Item -LiteralPath $cursor -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $cursor" }
+        }
+        $cursor = Split-Path $cursor -Parent
+    }
+    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 }
-Start-Sleep -Milliseconds 500
 
 Write-Host '== 1. Release 全量构建 + 测试 ==' -ForegroundColor Cyan
 & $Dotnet build PcSecurityCenter.slnx -c Release --nologo
@@ -38,9 +49,9 @@ if (-not $SkipTests) {
 
 Write-Host '== 2. 自包含发布 ==' -ForegroundColor Cyan
 # 清空旧产物，防止上一版本残留 DLL 混入安装包
-if (Test-Path 'publish/selfcontained') { Remove-Item 'publish/selfcontained' -Recurse -Force }
+Remove-PublishBuildDirectory 'publish/selfcontained'
 & $Dotnet publish src/PcSecurityCenter.App/PcSecurityCenter.App.csproj -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugSymbols=false -p:DebugType=None `
     -o publish/selfcontained --nologo
 if ($LASTEXITCODE -ne 0) { throw 'publish failed' }
 
@@ -48,13 +59,13 @@ Write-Host '== 3. 便携版 zip ==' -ForegroundColor Cyan
 $zip = "publish/PcSecurityCenter-Portable-$ver.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 $tmp = 'publish/_portable_doc'
-if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+Remove-PublishBuildDirectory $tmp
 New-Item -ItemType Directory -Force $tmp | Out-Null
 Copy-Item installer/使用说明.md,installer/更新日志.md,installer/LICENSES.md,LICENSE $tmp -Force
 # 先打包程序文件，再把文档并入（避免文档被同名目录结构覆盖）
 Compress-Archive -Path 'publish/selfcontained/*' -DestinationPath $zip -CompressionLevel Optimal
 Compress-Archive -Path "$tmp/*" -DestinationPath $zip -Update
-Remove-Item $tmp -Recurse -Force
+Remove-PublishBuildDirectory $tmp
 Write-Host "  $zip"
 
 Write-Host '== 4. Inno Setup 安装包 ==' -ForegroundColor Cyan

@@ -16,6 +16,7 @@ public class ConfigService : IConfigService
         "PcSecurityCenter", "config.json");
 
     private readonly string _configFile;
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -51,17 +52,30 @@ public class ConfigService : IConfigService
 
     public async Task<bool> SaveAsync()
     {
+        await _saveGate.WaitAsync();
+        string? temporary = null;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_configFile)!);
+            var target = Path.GetFullPath(_configFile);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             var json = JsonSerializer.Serialize(Current, JsonOpts);
-            await File.WriteAllTextAsync(_configFile, json);
+            temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            await File.WriteAllTextAsync(temporary, json);
+            // 同目录提交，保存失败时原配置仍可读。
+            if (File.Exists(target)) File.Replace(temporary, target, null);
+            else File.Move(temporary, target);
             return true;
         }
         catch (Exception ex)
         {
             Serilog.Log.Warning(ex, "配置保存失败");
             return false;
+        }
+        finally
+        {
+            if (temporary != null)
+                try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            _saveGate.Release();
         }
     }
 }

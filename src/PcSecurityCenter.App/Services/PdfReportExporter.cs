@@ -99,7 +99,7 @@ public static class PdfReportExporter
                     // 扫描记录
                     col.Item().Text("扫描记录").FontSize(13).Bold().FontColor("#0EA5E9");
                     foreach (var s in data.Scans.Take(30))
-                        col.Item().Text($"{s.StartedAt:yyyy-MM-dd HH:mm} [{ScanTypeName(s.Type)}] {s.FinalState}，文件 {s.FilesScanned}，风险 {s.ThreatsFound}，引擎 {s.Engines}")
+                        col.Item().Text($"{s.StartedAt:yyyy-MM-dd HH:mm} [{ScanTypeName(s.Type)}] {s.FinalState}，已枚举文件 {s.FilesScanned}，检测记录 {s.ThreatsFound}，引擎 {s.Engines}\n范围：{s.Scope}\n覆盖限制：{s.UncoveredNotes}")
                             .FontSize(9);
 
                     // 威胁

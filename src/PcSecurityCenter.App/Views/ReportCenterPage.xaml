@@ -10,8 +10,8 @@
             <Border Style="{StaticResource SectionCard}">
                 <DockPanel>
                     <StackPanel Orientation="Horizontal">
-                        <Button Content="导出 HTML 报告" Style="{StaticResource PrimaryButton}" Command="{Binding ExportHtmlCommand}" IsEnabled="{Binding !IsBusy}" />
-                        <Button Content="导出 PDF 报告" Style="{StaticResource GhostButton}" Margin="10,0,0,0" Command="{Binding ExportPdfCommand}" IsEnabled="{Binding !IsBusy}" />
+                        <Button Content="导出 HTML 报告" Style="{StaticResource PrimaryButton}" Command="{Binding ExportHtmlCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        <Button Content="导出 PDF 报告" Style="{StaticResource GhostButton}" Margin="10,0,0,0" Command="{Binding ExportPdfCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         <Button Content="打开报告目录" Style="{StaticResource GhostButton}" Margin="10,0,0,0" Command="{Binding OpenReportsDirCommand}" />
                     </StackPanel>
                     <TextBlock Text="{Binding StatusText}" FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}"

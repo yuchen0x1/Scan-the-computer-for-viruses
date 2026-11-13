@@ -23,7 +23,7 @@ public class ScanOrchestrator : IScanOrchestrator
 
     private CancellationTokenSource? _cts;
     private volatile bool _paused;
-    private readonly SemaphoreSlim _pauseGate = new(1, 1);
+    private readonly HashSet<string> _warnings = new();
 
     public ScanProgress CurrentProgress { get; } = new();
     public event EventHandler<ScanProgress>? ProgressChanged;
@@ -62,6 +62,9 @@ public class ScanOrchestrator : IScanOrchestrator
                 Elapsed = CurrentProgress.Elapsed,
                 EngineName = CurrentProgress.EngineName,
                 Message = CurrentProgress.Message,
+                CoverageWarnings = CurrentProgress.CoverageWarnings,
+                Scope = CurrentProgress.Scope,
+                IsEstimating = CurrentProgress.IsEstimating,
             };
         }
     }
@@ -74,7 +77,7 @@ public class ScanOrchestrator : IScanOrchestrator
         var runId = Guid.NewGuid();
         lock (_gate)
         {
-            if (CurrentProgress.State is ScanState.Running or ScanState.Preparing or ScanState.Paused or ScanState.Cancelling)
+            if (_cts != null)
                 throw new InvalidOperationException("已有扫描任务在运行中。");
 
             runCts = new CancellationTokenSource();
@@ -90,12 +93,17 @@ public class ScanOrchestrator : IScanOrchestrator
             CurrentProgress.CurrentItem = string.Empty;
             CurrentProgress.Message = string.Empty;
             CurrentProgress.EngineName = string.Empty;
+            CurrentProgress.CoverageWarnings = string.Empty;
+            CurrentProgress.Scope = string.Empty;
+            CurrentProgress.IsEstimating = true;
+            _warnings.Clear();
         }
         var ct = runCts.Token;
         _paused = false;
         var startedAt = DateTime.UtcNow;
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         CancellationTokenSource? estimateCts = null;
+        Task? estimateObserver = null;
 
         // 整个流程包在 try 中：任何异常都要落到 UI 与日志，绝不允许被命令层静默吞掉
         try
@@ -121,20 +129,25 @@ public class ScanOrchestrator : IScanOrchestrator
                 ScanType.Full => _rangeBuilder.BuildFullRange(request.Drives.Count > 0 ? request.Drives : null),
                 _ => request.RootPaths.Where(p => Directory.Exists(p) || File.Exists(p)).ToList(),
             };
+            roots = FileEnumerator.NormalizeRoots(roots);
+            if (roots.Count == 0) throw new InvalidOperationException("没有可访问的扫描路径，请重新选择文件或文件夹。");
+            if (request.Type == ScanType.Custom && request.RootPaths.Any(p => !File.Exists(p) && !Directory.Exists(p)))
+                AddWarning("部分所选路径不存在或不可访问，未扫描这些路径。");
             Serilog.Log.Information("扫描开始：类型 {Type}，范围 {Scope}，Defender={Defender}",
                 request.Type, string.Join(";", roots.Take(5)), defenderAvailable);
 
             var scopeText = string.Join("；", roots.Take(6)) + (roots.Count > 6 ? $" 等 {roots.Count} 个位置" : "");
-            Update(p => { p.Message = $"扫描范围：{scopeText}"; });
+            Update(p => { p.Scope = scopeText; p.Message = $"扫描范围：{scopeText}"; });
 
             // 防护提示：Defender 不可用时的诚实提示
             if (!defenderAvailable)
-                Update(p => p.Message = "警告：Microsoft Defender 不可用，本扫描仅启用智能风险规则引擎，病毒判定能力受限。");
+                AddWarning("Microsoft Defender 不可用，仅运行 SmartRisk 规则，未完成病毒引擎扫描。");
 
             // 后台估算文件总数（供进度显示；尽力而为，不阻塞扫描开始）
             estimateCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             estimateCts.CancelAfter(TimeSpan.FromMinutes(2));
-            var estimateTask = _rangeBuilder.EstimateFileCountAsync(roots, estimateCts.Token);
+            var estimateTask = Task.Run(() => _rangeBuilder.EstimateFileCountAsync(roots, estimateCts.Token));
+            estimateObserver = ObserveEstimateAsync(estimateTask);
 
             Update(p => { p.State = ScanState.Running; p.Message = "扫描进行中…"; });
 
@@ -142,21 +155,22 @@ public class ScanOrchestrator : IScanOrchestrator
             var smartTask = Task.Run(() => RunSmartEngineAsync(roots, contextFor(request, roots, runId), found, startedAt, ct, runId), ct);
 
             // Defender 部分
-            Task defenderTask = request.Type switch
+            Task defenderTask = !defenderAvailable ? Task.CompletedTask : request.Type switch
             {
                 ScanType.Quick => RunDefenderQuickAsync(found, startedAt, ct, runId),
-                ScanType.Full => RunDefenderStreamedAsync(roots, found, startedAt, ct, estimateTask, runId),
+                ScanType.Full => RunDefenderStreamedAsync(roots, found, startedAt, ct, runId),
                 _ => RunDefenderCustomAsync(roots, found, startedAt, ct, runId),
             };
 
             await Task.WhenAll(smartTask, defenderTask);
             estimateCts.Cancel();
-            await estimateTask.IgnoreCancellation();
+            await estimateObserver;
+            ct.ThrowIfCancellationRequested();
 
             var threats = found.Count;
             Serilog.Log.Information("扫描完成：文件 {Files}，风险 {Threats}，耗时 {Elapsed}",
                 CurrentProgress.FilesScanned, threats, DateTime.UtcNow - startedAt);
-            Update(p => { p.State = ScanState.Completed; p.Message = $"扫描完成：共检查 {p.FilesScanned} 个文件，发现 {threats} 项风险。"; });
+            Update(p => { p.State = ScanState.Completed; p.Message = $"{(string.IsNullOrEmpty(p.CoverageWarnings) ? "扫描完成" : "扫描结束（覆盖受限）")}：已枚举 {p.FilesScanned} 个文件，发现 {threats} 条检测记录。"; });
         }
         catch (OperationCanceledException)
         {
@@ -170,16 +184,53 @@ public class ScanOrchestrator : IScanOrchestrator
         }
         finally
         {
-            Update(p => p.Elapsed = DateTime.UtcNow - startedAt);
-            Completed?.Invoke(this, Snapshot());
+            estimateCts?.Cancel();
+            if (estimateObserver != null) await estimateObserver;
+            Update(p => { p.Elapsed = DateTime.UtcNow - startedAt; p.IsEstimating = false; });
+            var final = Snapshot();
             lock (_gate)
             {
-                if (ReferenceEquals(_cts, runCts))
-                    _cts = null;
+                if (ReferenceEquals(_cts, runCts)) _cts = null;
+                runCts.Dispose();
             }
-            estimateCts?.Cancel();
             estimateCts?.Dispose();
-            runCts.Dispose();
+            Completed?.Invoke(this, final);
+        }
+    }
+
+    private async Task ObserveEstimateAsync(Task<long> estimate)
+    {
+        try
+        {
+            var count = await estimate;
+            Update(p => p.FilesTotal = Math.Max(p.FilesTotal, count));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Debug(ex, "文件数估算未完成"); }
+        finally { Update(p => p.IsEstimating = false); }
+    }
+
+    private void AddWarning(string warning)
+    {
+        lock (_gate)
+        {
+            // 数量有界，逐目录失败不让 UI/报告无限增长。
+            if (_warnings.Count < 12) _warnings.Add(warning);
+            CurrentProgress.CoverageWarnings = string.Join("\n", _warnings);
+        }
+        Update(_ => { });
+    }
+
+    private void PublishDetection(ThreatInfo threat, HashSet<string> found, Guid runId)
+    {
+        threat.ScanRunId = runId;
+        var key = $"{threat.Engine}|{threat.FilePath}|{threat.DefenderThreatId}|{threat.Name}";
+        lock (_gate)
+        {
+            if (!found.Add(key)) return;
+            CurrentProgress.ThreatsFound++;
+            // 串行派发，消费者不必承担两个引擎并发事件的竞态。
+            ThreatFound?.Invoke(this, threat);
         }
     }
 
@@ -231,12 +282,7 @@ public class ScanOrchestrator : IScanOrchestrator
     {
         await foreach (var t in _smartEngine.ScanFilesAsync(files, ctx, ct))
         {
-            t.ScanRunId = runId;
-            if (found.Add(t.FilePath))
-            {
-                lock (_gate) CurrentProgress.ThreatsFound++;
-                ThreatFound?.Invoke(this, t);
-            }
+            PublishDetection(t, found, runId);
         }
         lock (_gate) CurrentProgress.FilesScanned += files.Count;
         UpdateTiming(startedAt);
@@ -270,13 +316,12 @@ public class ScanOrchestrator : IScanOrchestrator
     // ---------- Defender：快速扫描（原生） ----------
     private async Task RunDefenderQuickAsync(HashSet<string> found, DateTime startedAt, CancellationToken ct, Guid runId)
     {
-        if (!_defender.IsAvailable) return;
         Update(p => p.CurrentItem = "Defender 原生快速扫描（系统内存与启动区域）");
         Serilog.Log.Information("启动 Defender 原生快速扫描…");
         var ok = await _defender.StartQuickScanAsync(ct);
         Serilog.Log.Information("Defender 原生快速扫描结束：{Result}", ok ? "完成" : "未成功");
         if (!ok)
-            Update(p => p.Message = "Defender 快速扫描未能启动（详见日志），已继续使用智能风险引擎。");
+            AddWarning("Defender 快速扫描未成功，病毒引擎覆盖不完整（详见日志）。");
         // 等原生扫描收尾后拉取真实检测记录
         await Task.Delay(1500, ct);
         await CollectDefenderDetectionsAsync(found, ct, startedAt.ToLocalTime(), runId);
@@ -284,26 +329,18 @@ public class ScanOrchestrator : IScanOrchestrator
 
     // ---------- Defender：全盘（流式逐目录，支持暂停/恢复/取消） ----------
     private async Task RunDefenderStreamedAsync(List<string> roots, HashSet<string> found,
-        DateTime startedAt, CancellationToken ct, Task<long> estimateTask,
+        DateTime startedAt, CancellationToken ct,
         Guid runId)
     {
-        if (!_defender.IsAvailable) return;
 
         // SingleReader：只有编排器一个读取者。反链分区保证每个目录只被投递一次，
         // 因此 Defender 不会重复递归扫描同一子树（见 FileEnumerator.PartitionForScan）。
         var dirChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(4) { SingleReader = true });
-        var estimate = 0L;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                estimate = await estimateTask;
-                // FilesTotal 只允许单调不减，避免进度百分比回退
-                lock (_gate) CurrentProgress.FilesTotal = Math.Max(CurrentProgress.FilesTotal, estimate);
-            }
-            catch (Exception) { }
-        }, ct);
-
+        using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var streamToken = streamCts.Token;
+        var submitted = 0;
+        var received = 0;
+        var allSubmitted = false;
         // 生产者：把每个根切分为互不包含的扫描单元；暂停通过 WaitWhilePausedAsync 实现
         var producer = Task.Run(async () =>
         {
@@ -313,50 +350,54 @@ public class ScanOrchestrator : IScanOrchestrator
                 {
                     foreach (var unit in FileEnumerator.PartitionForScan(root))
                     {
-                        await WaitWhilePausedAsync(ct);
-                        await dirChannel.Writer.WriteAsync(unit, ct);
+                        await WaitWhilePausedAsync(streamToken);
+                        await dirChannel.Writer.WriteAsync(unit, streamToken);
+                        Interlocked.Increment(ref submitted);
                     }
                 }
+                allSubmitted = true;
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) when (streamToken.IsCancellationRequested) { }
+            catch (Exception ex) { dirChannel.Writer.TryComplete(ex); throw; }
             finally { dirChannel.Writer.TryComplete(); }
-        }, ct);
+        });
 
-        var dirResults = _defender.StreamScanDirectoriesAsync(dirChannel.Reader, ct);
-
-        await foreach (var r in dirResults.WithCancellation(ct))
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            lock (_gate) CurrentProgress.FilesScanned += r.FileCount;
-            UpdateTiming(startedAt);
-            Update(p => p.CurrentItem = $"Defender 引擎扫描：{r.Directory}");
-            foreach (var d in r.NewDetections)
+            await foreach (var r in _defender.StreamScanDirectoriesAsync(dirChannel.Reader, streamToken).WithCancellation(streamToken))
             {
-                d.ScanRunId = runId;
-                if (found.Add(d.FilePath))
-                {
-                    lock (_gate) CurrentProgress.ThreatsFound++;
-                    ThreatFound?.Invoke(this, d);
-                }
+                ct.ThrowIfCancellationRequested();
+                received++;
+                if (!r.Success) AddWarning($"Defender 未完成目录扫描：{r.Directory}；{r.Error}");
+                UpdateTiming(startedAt);
+                Update(p => p.CurrentItem = $"Defender 引擎扫描：{r.Directory}");
+                foreach (var d in r.NewDetections) PublishDetection(d, found, runId);
             }
-            // 估算值不会把总量压到已扫描量之下（UpdateTiming 已保证单调）
-            if (estimate > 0)
-                lock (_gate) CurrentProgress.FilesTotal = Math.Max(CurrentProgress.FilesScanned, estimate);
+            // 消费者提前退出时先停止生产者，防有界队列满后永久等待。
+            streamCts.Cancel();
+            await producer;
+            ct.ThrowIfCancellationRequested();
+            if (!allSubmitted || submitted == 0 || received != submitted)
+                AddWarning("Defender 目录扫描提前结束，部分扫描单元未返回结果。");
         }
-        await producer;
+        finally
+        {
+            streamCts.Cancel();
+            await producer;
+        }
     }
 
     // ---------- Defender：自定义扫描（MpCmdRun 定向） ----------
     private async Task RunDefenderCustomAsync(List<string> roots, HashSet<string> found,
         DateTime startedAt, CancellationToken ct, Guid runId)
     {
-        if (!_defender.IsAvailable) return;
         foreach (var root in roots)
         {
             ct.ThrowIfCancellationRequested();
             await WaitWhilePausedAsync(ct);
             Update(p => { p.CurrentItem = $"Defender 定向扫描：{root}"; });
             var result = await _defender.ScanPathsAsync(new[] { root }, ct);
+            if (!result.Success) AddWarning($"Defender 未完成定向扫描：{root}；{result.Error}");
             if (result.ThreatsFound > 0)
             {
                 foreach (var t in result.ThreatList)
@@ -364,16 +405,9 @@ public class ScanOrchestrator : IScanOrchestrator
             }
             // 定向扫描后拉取真实检测记录
             await CollectDefenderDetectionsAsync(found, ct, startedAt.ToLocalTime(), runId);
-            var count = await CountFilesAsync(root, ct);
-            lock (_gate) CurrentProgress.FilesScanned += count;
             UpdateTiming(startedAt);
             Update(p => { });
         }
-    }
-
-    private static async Task<long> CountFilesAsync(string root, CancellationToken ct)
-    {
-        return await Task.Run(() => FileEnumerator.EnumerateFiles(root, ct).LongCount(), ct);
     }
 
     private async Task CollectDefenderDetectionsAsync(HashSet<string> found, CancellationToken ct,
@@ -386,15 +420,11 @@ public class ScanOrchestrator : IScanOrchestrator
             {
                 // 只归因于本次扫描期间（或之后）的检出，避免把历史记录算进本次结果
                 if (since != null && d.DetectedAt < since.Value.AddSeconds(-5)) continue;
-                if (runId.HasValue) d.ScanRunId = runId.Value;
-                if (found.Add(d.FilePath))
-                {
-                    lock (_gate) CurrentProgress.ThreatsFound++;
-                    ThreatFound?.Invoke(this, d);
-                }
+                PublishDetection(d, found, runId ?? CurrentProgress.RunId);
             }
         }
-        catch (Exception) { /* 检测记录读取失败不阻断扫描 */ }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { AddWarning($"Defender 检测记录读取失败：{ex.Message}"); }
     }
 
     public void Pause()
@@ -412,12 +442,13 @@ public class ScanOrchestrator : IScanOrchestrator
 
     public Task CancelAsync()
     {
-        if (CurrentProgress.State is not (ScanState.Running or ScanState.Paused or ScanState.Preparing))
-            return Task.CompletedTask;
-        Update(p => { p.State = ScanState.Cancelling; p.Message = "正在取消扫描…"; });
-        // Cancel this run through its linked process tokens. The broad platform
-        // StopScan command can terminate unrelated MpCmdRun processes.
-        _cts?.Cancel();
+        lock (_gate)
+        {
+            if (_cts == null || CurrentProgress.State is not (ScanState.Running or ScanState.Paused or ScanState.Preparing))
+                return Task.CompletedTask;
+            Update(p => { p.State = ScanState.Cancelling; p.Message = "正在取消扫描…"; });
+            _cts.Cancel();
+        }
         return Task.CompletedTask;
     }
 }

@@ -100,12 +100,12 @@ code{background:#0d1330;padding:1px 6px;border-radius:6px;font-size:12px}
         sb.Append("</table></div>");
 
         // 扫描记录
-        sb.Append("<h2>扫描记录</h2><div class=\"card\"><table><tr><th>时间</th><th>类型</th><th>范围</th><th>文件数</th><th>风险数</th><th>引擎</th><th>结果</th></tr>");
+        sb.Append("<h2>扫描记录</h2><div class=\"card\"><table><tr><th>时间</th><th>类型</th><th>范围</th><th>已枚举文件数</th><th>检测记录数</th><th>引擎</th><th>结果</th><th>覆盖限制</th></tr>");
         foreach (var s in data.Scans)
         {
-            sb.Append($"""<tr><td>{s.StartedAt:yyyy-MM-dd HH:mm}</td><td>{ScanTypeName(s.Type)}</td><td>{Escape(Trunc(s.Scope, 80))}</td><td>{s.FilesScanned}</td><td>{s.ThreatsFound}</td><td>{Escape(s.Engines)}</td><td>{Escape(s.FinalState.ToString())}</td></tr>""");
+            sb.Append($"""<tr><td>{s.StartedAt:yyyy-MM-dd HH:mm}</td><td>{ScanTypeName(s.Type)}</td><td>{Escape(Trunc(s.Scope, 80))}</td><td>{s.FilesScanned}</td><td>{s.ThreatsFound}</td><td>{Escape(s.Engines)}</td><td>{Escape(s.FinalState.ToString())}</td><td>{Escape(s.UncoveredNotes)}</td></tr>""");
         }
-        if (data.Scans.Count == 0) sb.Append("<tr><td colspan=\"7\" class=\"sub\">暂无扫描记录</td></tr>");
+        if (data.Scans.Count == 0) sb.Append("<tr><td colspan=\"8\" class=\"sub\">暂无扫描记录</td></tr>");
         sb.Append("</table></div>");
 
         // 威胁

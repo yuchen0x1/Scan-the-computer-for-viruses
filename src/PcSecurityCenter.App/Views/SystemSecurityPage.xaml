@@ -15,7 +15,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button Content="开始检查" Style="{StaticResource PrimaryButton}" Command="{Binding RunChecksCommand}"
-                                IsEnabled="{Binding !IsChecking}" />
+                                IsEnabled="{Binding IsChecking, Converter={StaticResource InverseBool}}" />
                         <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}"
                                    VerticalAlignment="Center" Margin="14,0,0,0" TextWrapping="Wrap" />
                     </StackPanel>

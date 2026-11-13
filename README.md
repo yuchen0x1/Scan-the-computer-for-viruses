@@ -13,21 +13,21 @@
 
 ## 最新更新
 
-### v1.2.3（2026-11-12）
+### v1.2.4（2026-11-13）
 
-在线更新链路已升级：优先使用静态更新清单和 GitHub Releases Atom feed，降低匿名 API 限流影响；下载失败自动重试，并在安装前执行 SHA256、文件大小和签名校验。新增 GitHub Actions 标签发布流程，自动生成安装包、便携版、校验和与 `update.json`。
+扫描统计、重复扫描结果与覆盖限制展示已修正；威胁列表新增搜索和确认威胁筛选，配置与隔离区增强并发保护。Defender 单条威胁处理请在 Windows 安全中心的保护历史记录中完成。
 
-完整历史见 [docs/releases/release-notes.md](docs/releases/release-notes.md) 和 [installer/更新日志.md](installer/更新日志.md)。
+安装包与便携版见 [v1.2.4 发布页](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/tag/v1.2.4)。完整历史见 [docs/releases/release-notes.md](docs/releases/release-notes.md)；本次研究、修改和验证见 [升级报告](docs/evolution-2026-11-13.md)。
 
 ---
 
-## 功能总览（13 个页面）
+## 功能总览（14 个页面，含设置中心）
 
 | 模块 | 能力 | 数据来源 |
 |---|---|---|
 | 安全驾驶舱 | 综合安全评分（规则公开透明）、防护状态卡、CPU/GPU/内存/磁盘/网速实时卡片、最近安全事件、一键体检 | 真实检查项 + PerformanceCounter/WMI |
-| 病毒查杀 | 快速/全盘/自定义三种扫描；暂停/继续/取消；进度/速度/文件数 | Microsoft Defender 官方引擎（PowerShell cmdlet + MpCmdRun）+ SmartRisk 智能风险规则引擎 |
-| 威胁处理 | 隔离（优先）/删除/忽略/详情；AES-256-CBC 加密 + HMAC-SHA256 认证（encrypt-then-MAC）隔离区，主密钥 DPAPI 保护，密文被篡改即拒绝恢复 | Defender 官方接口（Remove-MpThreat）+ 本地隔离库 |
+| 病毒查杀 | 快速/全盘/自定义三种扫描；暂停投递/继续/取消；枚举进度/速度/文件数与引擎覆盖限制 | Microsoft Defender 官方引擎（PowerShell cmdlet + MpCmdRun）+ SmartRisk 智能风险规则引擎 |
+| 威胁处理 | 本地风险隔离（优先）/删除/忽略/详情；Defender 记录引导至 Windows 安全中心；AES-256-CBC 加密 + HMAC-SHA256 认证（encrypt-then-MAC）隔离区，主密钥 DPAPI 保护，密文被篡改即拒绝恢复 | Windows 安全中心保护历史记录 + 本地隔离库 |
 | 实时防护 | 启动文件夹监控（FileSystemWatcher 事件驱动）、Run 键变化、临时目录新进程、Defender 状态变化；低频轮询资源占用可控 | Windows API + 可配置轮询间隔 |
 | 网络安全 | TCP 连接（进程关联/签名检查）、可疑连接提示（标注依据，不自动封禁）、防火墙配置、代理/Hosts/DNS 检查、实时流量 | GetExtendedTcpTable / Get-NetFirewallProfile / 注册表只读 |
 | 系统安全 | Defender/防火墙/Windows Update/UAC/Secure Boot/TPM/BitLocker/安全中心/账户/RDP/补丁/SMBv1 等 15+ 项检查 | PowerShell/WMI/注册表只读；**无法读取的项如实标注「权限不足/暂不支持」，绝不默认显示安全** |
@@ -78,6 +78,14 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 - 系统级最小化（Win+↓、任务栏点击）同样收进托盘。
 - 单击或双击托盘图标、或右键选「打开」可恢复窗口；只有右键菜单中的「退出」会真正结束进程并清理托盘图标。
 
+## 扫描结果与验证边界
+
+- 文件数是本工具安全枚举的文件数量，跳过不可访问路径及重解析点，不代表 Defender 内部实际检查数量。多个引擎的检测记录分别计数；一个文件可能对应多条记录。
+- Defender 不可用或调用失败时，仍可展示 SmartRisk 结果，并持续显示覆盖限制；“结束”不表示机器安全。
+- 暂停控制后续投递；已交付系统 Defender 服务的工作可能继续。取消本工具进程也不保证系统服务立即停止已有扫描。
+- “忽略”仅标记这条历史记录，后续扫描仍会重新检查。Defender 官方 `Remove-MpThreat` 不支持单条 ThreatID 处理，因此本工具不会执行该全局清除命令。
+- [本地验证入口与截图说明](tools/PcSecurityCenter.UiSmoke/README.md)提供真实 WPF 页面、SmartRisk 样本与 SQLite 关联检查。它使用离线 Defender 替身，不代表完整应用或真实杀毒引擎验收。
+
 ## 数据与日志
 
 - 数据目录：`%APPDATA%\PcSecurityCenter\`（数据库 security.db、日志 logs\、报告 reports\、隔离库 Quarantine\）
@@ -86,8 +94,8 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 ## 安装、更新与发布
 
 ### 安装包
-- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.3.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
-- 免安装便携版：`PcSecurityCenter-Portable-1.2.3.zip`，解压即用。
+- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.4.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`PcSecurityCenter-Portable-1.2.4.zip`，解压即用。
 - 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
 - 自 1.2.0 起要求 **Windows 10 2004 (build 19041) 及以上**（x64）；Windows 10 1809/1909 不再支持。
 - 每个 Release 附带 `SHA256SUMS.txt`，可自行校验下载产物完整性。
@@ -112,11 +120,11 @@ pwsh publish.ps1
 # 1) 自包含发布
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 2) 便携版 zip
-Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.3.zip
+Compress-Archive -Path publish/selfcontained/* -DestinationPath publish/PcSecurityCenter-Portable-1.2.4.zip
 # 3) 安装包（需 Inno Setup 6）
-iscc /DAppVersion=1.2.3 installer/PcSecurityCenter.iss
+iscc /DAppVersion=1.2.4 installer/PcSecurityCenter.iss
 # 4) 创建 GitHub Release 并上传安装包、便携版与 SHA256SUMS
-gh release create v1.2.3 -t "Windows 智能安全卫士 v1.2.3" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.3.exe publish/PcSecurityCenter-Portable-1.2.3.zip publish/SHA256SUMS.txt publish/update.json
+gh release create v1.2.4 -t "Windows 智能安全卫士 v1.2.4" --notes-file installer/更新日志.md publish/installer/PcSecurityCenter-Setup-1.2.4.exe publish/PcSecurityCenter-Portable-1.2.4.zip publish/SHA256SUMS.txt publish/update.json
 ```
 
 ## Star History

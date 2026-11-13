@@ -16,8 +16,7 @@ public interface IDefenderClient
     Task<MpScanResult> ScanPathsAsync(IEnumerable<string> paths, CancellationToken ct);
     /// <summary>查询真实威胁检测记录。</summary>
     Task<List<ThreatInfo>> GetThreatDetectionsAsync(CancellationToken ct = default);
-    /// <summary>按 ThreatID 处理单条 Defender 威胁（隔离/清除）。
-    /// 只影响指定 ID 的记录，绝不触碰其他威胁；threatId 非法时直接返回 false。</summary>
+    /// <summary>兼容旧接口；Windows 实现拒绝按 ID 清除（官方 cmdlet 无此能力），返回 false。</summary>
     Task<bool> RemoveThreatAsync(long threatId, CancellationToken ct = default);
     /// <summary>
     /// 流式逐目录扫描：从目录通道读取目录，逐个交给 Defender 引擎扫描，

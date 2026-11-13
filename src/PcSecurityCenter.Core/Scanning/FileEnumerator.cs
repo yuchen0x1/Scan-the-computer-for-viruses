@@ -10,7 +10,7 @@ public static class FileEnumerator
     public static IEnumerable<string> EnumerateFiles(string root, CancellationToken ct)
     {
         var attr = SafeAttributes(root);
-        if (attr == null) yield break;
+        if (attr == null || attr.Value.HasFlag(FileAttributes.ReparsePoint)) yield break;
         if (!attr.Value.HasFlag(FileAttributes.Directory))
         {
             yield return root;
@@ -31,6 +31,7 @@ public static class FileEnumerator
 
             foreach (var e in entries)
             {
+                ct.ThrowIfCancellationRequested();
                 var a = SafeAttributes(e);
                 if (a == null) continue;
                 if (a.Value.HasFlag(FileAttributes.ReparsePoint)) continue; // 不跟随符号链接
@@ -68,7 +69,7 @@ public static class FileEnumerator
     public static IEnumerable<string> PartitionForScan(string root)
     {
         var attr = SafeAttributes(root);
-        if (attr == null) yield break;
+        if (attr == null || attr.Value.HasFlag(FileAttributes.ReparsePoint)) yield break;
         if (!attr.Value.HasFlag(FileAttributes.Directory))
         {
             yield return root;
@@ -126,7 +127,19 @@ public static class FileEnumerator
         var c = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));
         var a = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ancestor));
         if (string.Equals(c, a, StringComparison.OrdinalIgnoreCase)) return true;
-        return c.StartsWith(a + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        var prefix = Path.EndsInDirectorySeparator(a) ? a : a + Path.DirectorySeparatorChar;
+        return c.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>移除重复或被祖先覆盖的根路径，避免跨根重复扫描；不遍历文件树。</summary>
+    public static List<string> NormalizeRoots(IEnumerable<string> paths)
+    {
+        var roots = paths.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p.Length).ToList();
+        var result = new List<string>();
+        foreach (var root in roots)
+            if (!result.Any(parent => IsSameOrDescendant(root, parent))) result.Add(root);
+        return result;
     }
 
     /// <summary>验证一组路径构成反链（两两之间不存在包含关系，且无重复）。</summary>

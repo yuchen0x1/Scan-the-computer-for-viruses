@@ -92,6 +92,10 @@ public class ScanProgress
     public TimeSpan Elapsed { get; set; }
     public string EngineName { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    /// <summary>本次扫描的覆盖限制；完成不等于所有引擎均成功。</summary>
+    public string CoverageWarnings { get; set; } = string.Empty;
+    public string Scope { get; set; } = string.Empty;
+    public bool IsEstimating { get; set; }
 }
 
 /// <summary>一次扫描任务的汇总记录。</summary>

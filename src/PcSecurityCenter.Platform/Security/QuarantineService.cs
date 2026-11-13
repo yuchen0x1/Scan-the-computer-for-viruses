@@ -27,6 +27,7 @@ public class QuarantineService : IQuarantineService
     private readonly string _recordsFile;
     private readonly byte[] _key;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
 
     public QuarantineService(string? baseDir = null)
     {
@@ -159,7 +160,7 @@ public class QuarantineService : IQuarantineService
             catch (Exception ex)
             {
                 Serilog.Log.Error(ex, "隔离区索引读取失败");
-                return new List<QuarantineRecord>();
+                throw new IOException("隔离区索引不可读，已停止操作以保留原记录。", ex);
             }
             try
             {
@@ -190,7 +191,23 @@ public class QuarantineService : IQuarantineService
         }
     }
 
-    public async Task<QuarantineEntry> QuarantineFileAsync(string filePath, string reason, string engine, ThreatSeverity severity)
+    private async Task<T> MutateAsync<T>(Func<Task<T>> action)
+    {
+        await _mutationGate.WaitAsync().ConfigureAwait(false);
+        try { return await action().ConfigureAwait(false); }
+        finally { _mutationGate.Release(); }
+    }
+
+    public Task<QuarantineEntry> QuarantineFileAsync(string filePath, string reason, string engine, ThreatSeverity severity)
+        => MutateAsync(() => QuarantineFileCoreAsync(filePath, reason, engine, severity));
+
+    public Task<bool> RestoreAsync(Guid entryId, string? restoreDir = null)
+        => MutateAsync(() => RestoreCoreAsync(entryId, restoreDir));
+
+    public Task<bool> DeleteAsync(Guid entryId)
+        => MutateAsync(() => DeleteCoreAsync(entryId));
+
+    private async Task<QuarantineEntry> QuarantineFileCoreAsync(string filePath, string reason, string engine, ThreatSeverity severity)
     {
         // 只接受绝对路径：相对路径一律拒绝（防 CWD 依赖与路径混淆攻击）
         if (string.IsNullOrWhiteSpace(filePath) || !Path.IsPathRooted(filePath) || filePath.IndexOf((char)0) >= 0)
@@ -306,7 +323,7 @@ public class QuarantineService : IQuarantineService
         return Convert.ToHexString(plainHash.Hash!).ToLowerInvariant();
     }
 
-    public async Task<bool> RestoreAsync(Guid entryId, string? restoreDir = null)
+    private async Task<bool> RestoreCoreAsync(Guid entryId, string? restoreDir = null)
     {
         var records = LoadRecords();
         var rec = records.FirstOrDefault(r => r.Entry.Id == entryId);
@@ -324,6 +341,7 @@ public class QuarantineService : IQuarantineService
         {
             Serilog.Log.Warning("隔离区完整性校验失败：{File}（记录 {Id}），拒绝恢复：{Error}",
                 vaultPath, entryId, ex.Message);
+            try { if (File.Exists(tmpPlain)) File.Delete(tmpPlain); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             return false;
         }
 
@@ -343,7 +361,7 @@ public class QuarantineService : IQuarantineService
             if (File.Exists(targetPath))
                 targetPath += $".restored_{DateTime.Now:yyyyMMddHHmmss}";
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-            File.Move(tmpPlain, targetPath, overwrite: true);
+            File.Move(tmpPlain, targetPath, overwrite: false);
             Serilog.Log.Information("隔离文件已恢复：{Id} -> {Path}", entryId, targetPath);
             return true;
         }
@@ -454,7 +472,7 @@ public class QuarantineService : IQuarantineService
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
-    public Task<bool> DeleteAsync(Guid entryId)
+    private Task<bool> DeleteCoreAsync(Guid entryId)
     {
         var records = LoadRecords();
         var rec = records.FirstOrDefault(r => r.Entry.Id == entryId);

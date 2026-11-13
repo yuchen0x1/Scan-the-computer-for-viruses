@@ -24,3 +24,6 @@ installer/*.msi
 close_hover.png
 tools/shot.py
 tools/hover_test.py
+
+# Local evolution test data and self-contained build output
+.evolution/verification/

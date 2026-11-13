@@ -9,7 +9,7 @@
 
             <Border Style="{StaticResource SectionCard}">
                 <DockPanel>
-                    <Button Content="↻ 重新枚举" Style="{StaticResource PrimaryButton}" Command="{Binding LoadStartupCommand}" IsEnabled="{Binding !IsBusy}" />
+                    <Button Content="↻ 重新枚举" Style="{StaticResource PrimaryButton}" Command="{Binding LoadStartupCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                     <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{DynamicResource BrushTextSecondary}"
                                VerticalAlignment="Center" Margin="14,0,0,0" TextTrimming="CharacterEllipsis" />
                 </DockPanel>

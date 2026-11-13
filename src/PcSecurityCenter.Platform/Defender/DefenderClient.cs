@@ -168,30 +168,11 @@ try { Start-MpScan -ScanType QuickScan -ErrorAction Stop; 'SCANDONE' } catch { '
         return r.StdOut.Contains("SCANDONE");
     }
 
-    /// <summary>
-    /// 按 ThreatID 定点处理一条 Defender 威胁（隔离/清除）。
-    ///
-    /// 安全要点：不带 -ThreatID 的 Remove-MpThreat 会清除**全部**活动威胁，
-    /// 相当于用户在列表里点一条记录却清空了整台机器的检测记录。因此这里强制要求
-    /// 合法的威胁 ID，任何非数字输入都在进入脚本前被拒绝。
-    /// </summary>
-    public async Task<bool> RemoveThreatAsync(long threatId, CancellationToken ct = default)
+    /// <summary>兼容旧调用方：官方 cmdlet 不支持按 ID 处理，必须拒绝，不能退化为清除全部威胁。</summary>
+    public Task<bool> RemoveThreatAsync(long threatId, CancellationToken ct = default)
     {
-        if (threatId <= 0) return false;
-
-        const string script = """
-$tidText = $env:PSC_THREATID
-$tid = [int64]0
-if (-not [int64]::TryParse($tidText, [ref]$tid)) { 'FAIL: 非法的威胁 ID'; exit 0 }
-try {
-  Remove-MpThreat -ThreatID $tid -ErrorAction Stop
-  'REMOVED'
-} catch { 'FAIL: ' + $_.Exception.Message }
-""";
-        var r = await PowerShellRunner.RunAsync(script,
-            new Dictionary<string, string> { ["threatid"] = threatId.ToString() },
-            timeoutMs: 300_000, ct: ct);
-        return r.StdOut.Contains("REMOVED");
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(false);
     }
 
     // ---------------- MpCmdRun 定向扫描 ----------------
@@ -203,17 +184,21 @@ try {
             result.Error = "MpCmdRun.exe 不可用";
             return result;
         }
+        result.Success = true;
+        var any = false;
         foreach (var path in paths)
         {
             ct.ThrowIfCancellationRequested();
+            any = true;
             var one = await RunMpCmdRunScanAsync(path, ct);
             result.ExitCode = one.ExitCode;
             result.ThreatsFound += one.ThreatsFound;
             result.ThreatList.AddRange(one.ThreatList);
             result.RawOutputTail = one.RawOutputTail;
-            result.Success = one.Success;
+            result.Success &= one.Success;
             if (!one.Success) result.Error = one.Error;
         }
+        result.Success &= any;
         return result;
     }
 
@@ -241,9 +226,10 @@ try {
 
             using var proc = Process.Start(psi)!;
             var output = new StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data != null) { lock (output) output.AppendLine(e.Data); } };
-            proc.ErrorDataReceived += (_, e) => { };
+            proc.OutputDataReceived += (_, e) => { if (e.Data != null) { lock (output) { output.AppendLine(e.Data); if (output.Length > 65536) output.Remove(0, output.Length - 65536); } } };
+            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) { lock (output) { output.AppendLine(e.Data); if (output.Length > 65536) output.Remove(0, output.Length - 65536); } } };
             proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
 
             using var reg = ct.Register(() => { try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception) { } });
             await proc.WaitForExitAsync(ct);
@@ -255,6 +241,7 @@ try {
             var m = System.Text.RegularExpressions.Regex.Match(stdout, @"(\d+)\s+threats?\s+found", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (m.Success && int.TryParse(m.Groups[1].Value, out var n)) result.ThreatsFound = n;
             result.Success = result.ExitCode == 0;
+            if (!result.Success) result.Error = $"MpCmdRun 退出码 {result.ExitCode}：{stdout[^Math.Min(1000, stdout.Length)..]}";
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -316,6 +303,8 @@ while ($true) {
 
         using var proc = new Process { StartInfo = psi };
         proc.Start();
+        proc.ErrorDataReceived += (_, _) => { };
+        proc.BeginErrorReadLine();
 
         // 读取通道：后台任务把 stdout 行送入 channel
         var lineChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(64)
@@ -413,6 +402,7 @@ while ($true) {
                             Engine = "MicrosoftDefender",
                             Evidence = $"Microsoft Defender 官方引擎检出（ThreatID={tid}，检测时间 {time:yyyy-MM-dd HH:mm:ss}）",
                             DefenderThreatId = tid,
+                            DetectedAt = time,
                             Recommendation = "建议使用隔离处理；Defender 威胁可通过官方接口清除。",
                         });
                     }

@@ -17,7 +17,7 @@
                         <TextBox Grid.Column="0" Text="{Binding FilePath, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0">
                             <Button Content="浏览…" Style="{StaticResource GhostButton}" Command="{Binding BrowseCommand}" Margin="0,0,8,0" />
-                            <Button Content="分析" Style="{StaticResource PrimaryButton}" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding !IsBusy}" />
+                            <Button Content="分析" Style="{StaticResource PrimaryButton}" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         </StackPanel>
                     </Grid>
                     <TextBlock Text="{Binding HashConsentNote}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}"
@@ -43,7 +43,7 @@
                         <TextBlock Text="对当前文件执行 Defender 官方引擎扫描（MpCmdRun 定向扫描），验证文件是否被当前病毒库判定为威胁。"
                                    FontSize="11.5" Foreground="{DynamicResource BrushTextSecondary}" TextWrapping="Wrap" />
                         <Button Content="对文件执行 Defender 扫描" Style="{StaticResource PrimaryButton}" Margin="0,10,0,0"
-                                Command="{Binding DefenderScanFileCommand}" IsEnabled="{Binding !IsBusy}" />
+                                Command="{Binding DefenderScanFileCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
                         <Border Style="{StaticResource HLine}" />
                         <TextBlock Text="EICAR 引擎自检" FontWeight="Bold" Margin="0,0,0,6" />
                         <TextBlock Text="{Binding EicarNote}" FontSize="11" Foreground="{DynamicResource BrushTextMuted}" TextWrapping="Wrap" />
