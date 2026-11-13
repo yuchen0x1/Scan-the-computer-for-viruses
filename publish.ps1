@@ -15,6 +15,9 @@ $ver = $props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Objec
 if (-not $ver) { throw 'Directory.Build.props 中未找到 <Version>' }
 Write-Host "版本：$ver" -ForegroundColor Cyan
 
+& pwsh -NoProfile -File (Join-Path $root 'tools/Sync-ReleaseNotes.ps1') -Check
+if ($LASTEXITCODE -ne 0) { throw 'Release notes are stale or invalid.' }
+
 # 校验 SDK 可用（避免误用只有运行时的 dotnet.exe）
 $sdks = & $Dotnet --list-sdks 2>$null
 if ($LASTEXITCODE -ne 0 -or -not ($sdks | Select-String -SimpleMatch '10.0.')) {

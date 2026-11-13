@@ -28,6 +28,7 @@ PcSecurityCenter 使用自有的轻量更新器，继续沿用现有 Inno Setup 
 - `main` push 和 Pull Request 由 `ci.yml` 构建并运行测试。
 - 推送形如 `v1.2.3` 的标签触发 `release.yml`。
 - 工作流会校验标签与 `Directory.Build.props` 的 `<Version>` 一致，运行 `publish.ps1`，生成安装包、便携 ZIP、`SHA256SUMS.txt` 和 `update.json`，再用仓库内置的 `GITHUB_TOKEN` 创建 Release。
+- 发布前检查安装包日志与 `docs/releases/release-notes.md` 是否同步。每个 Release 和清单中的版本说明由 `tools/Sync-ReleaseNotes.ps1` 从维护源导出，正文链接使用完整 GitHub 地址。
 - 已存在的 Release 不会被覆盖；`gh release create` 会失败并保留日志，避免误删或替换资产。
 
 示例：

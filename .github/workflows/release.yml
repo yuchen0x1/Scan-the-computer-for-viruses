@@ -47,12 +47,8 @@ jobs:
           $setup = Get-ChildItem "publish/installer/PcSecurityCenter-Setup-$version.exe" | Select-Object -First 1
           $portable = Get-Item "publish/PcSecurityCenter-Portable-$version.zip"
           $sums = Get-Item "publish/SHA256SUMS.txt"
-          $history = Get-Content -Raw 'docs/releases/release-notes.md'
-          $pattern = '(?ms)^## v' + [regex]::Escape($version) + '[^\r\n]*\r?\n(.*?)(?=^## |\z)'
-          $match = [regex]::Match($history, $pattern)
-          if (-not $match.Success) { throw "Missing release notes for $version" }
-          $releaseNotes = $match.Groups[1].Value.Trim()
-          $releaseNotes | Set-Content publish/release-notes.md -Encoding utf8NoBOM
+          ./tools/Sync-ReleaseNotes.ps1 -Version $version -OutputFile publish/release-notes.md
+          $releaseNotes = (Get-Content -Raw 'publish/release-notes.md').Trim()
           $manifest = [ordered]@{
             version = $version
             tag = $tag

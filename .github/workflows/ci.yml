@@ -20,5 +20,9 @@ jobs:
       - name: Build
         run: dotnet build PcSecurityCenter.slnx -c Release --nologo
 
+      - name: Check release notes
+        shell: pwsh
+        run: ./tools/Sync-ReleaseNotes.ps1 -Check
+
       - name: Test
         run: dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release --no-build --nologo

@@ -25,5 +25,27 @@ close_hover.png
 tools/shot.py
 tools/hover_test.py
 
-# Local evolution test data and self-contained build output
-.evolution/verification/
+# Local agent state, research clones and disposable verification output
+/.evolution/
+/.workbuddy/
+/artifacts/
+
+# User data, quarantine content and local signing material
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.qtn
+*.pfx
+*.p12
+*.key
+*.pem
+*.bak
+
+# Local editor and OS files
+.idea/
+__pycache__/
+.DS_Store
+Thumbs.db
+desktop.ini

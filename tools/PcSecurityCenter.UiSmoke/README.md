@@ -3,7 +3,7 @@
 从仓库根目录运行，需要 Windows 与 .NET 10 SDK。输出目录必须是仓库内全新空目录；工具拒绝复用已有数据。
 
 ```powershell
-dotnet run --project tools/PcSecurityCenter.UiSmoke -c Release -- .evolution/verification/ui-new
+dotnet run --project tools/PcSecurityCenter.UiSmoke -c Release -- artifacts/verification/ui-new
 ```
 
 验证真实 ScanPage、ScanViewModel、ScanOrchestrator、SmartRiskEngine、SQLite 与配置文件；Defender 使用不可用替身，对话框拒绝危险确认。只在指定目录写入无害样本、临时数据库、隔离库和明暗主题 PNG。窗口在屏幕外承载，用于加载 WPF 模板与绑定；不启动主应用后台防护或更新。
@@ -13,7 +13,7 @@ dotnet run --project tools/PcSecurityCenter.UiSmoke -c Release -- .evolution/ver
 安全回归测试（避免调用真实 Defender / 系统检查）：
 
 ```powershell
-$env:TEMP = Join-Path (Get-Location) '.evolution/verification/temp'
+$env:TEMP = Join-Path (Get-Location) 'artifacts/verification/temp'
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
 dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release --filter 'FullyQualifiedName!~ScanOrchestratorTests&FullyQualifiedName!~DefenderClientIntegrationTests&FullyQualifiedName!~SecurityCheckIntegrationTests'

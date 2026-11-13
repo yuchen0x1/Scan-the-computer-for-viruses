@@ -17,7 +17,7 @@
 
 扫描统计、重复扫描结果与覆盖限制展示已修正；威胁列表新增搜索和确认威胁筛选，配置与隔离区增强并发保护。Defender 单条威胁处理请在 Windows 安全中心的保护历史记录中完成。
 
-安装包与便携版见 [v1.2.4 发布页](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/tag/v1.2.4)。完整历史见 [docs/releases/release-notes.md](docs/releases/release-notes.md)；本次研究、修改和验证见 [升级报告](docs/evolution-2026-11-13.md)。
+安装包与便携版见 [v1.2.4 发布页](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/tag/v1.2.4)。各版本变化、验证范围与限制见 [完整发布历史](docs/releases/release-notes.md)。
 
 ---
 
@@ -132,6 +132,10 @@ gh release create v1.2.4 -t "Windows 智能安全卫士 v1.2.4" --notes-file ins
 项目的 GitHub Star 增长趋势（图表由 Star History 提供）：
 
 [![Star History Chart](https://api.star-history.com/svg?repos=yuchen0x1/Scan-the-computer-for-viruses&type=Date)](https://star-history.com/#yuchen0x1/Scan-the-computer-for-viruses&Date)
+
+## 开发与维护
+
+开发、更新日志维护与仓库文件约定见 [开发说明](docs/DEVELOPMENT.md)。
 
 ## 许可
 
