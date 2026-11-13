@@ -20,3 +20,13 @@ dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Releas
 ```
 
 在专用 Windows 测试机上再执行上述被排除的 7 项集成测试和完整应用启动/安装验收。本验证器不证明真实 Defender 扫描、权限提升、安装、更新或其余页面交互均通过。
+
+## 更新进度回归
+
+```powershell
+dotnet run --project tools/PcSecurityCenter.UiSmoke -c Release -- --update artifacts/verification/update-new
+```
+
+此模式运行真实更新服务和 WPF 更新页，通过受控 HTTP 响应分块传输本工具构建的无签名 PE 文件，在 50% 暂停读取并检查文字和进度条同步、后台事件回到 UI 线程、中途打开页面恢复当前进度，最后检查下载 SHA256 和 Ready 状态。还验证哈希不符时拒绝安装、失败重试归零且最多 3 次。
+
+验证输出仅写入指定空目录，不联网、不安装任何内容，不改动用户更新缓存。截图中的 v99.0.0 是测试发布响应，不能作为真实发版或旧客户端安装成功的证据。CI 自动执行这一模式。

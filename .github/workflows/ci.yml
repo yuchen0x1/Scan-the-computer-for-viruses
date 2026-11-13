@@ -26,3 +26,6 @@ jobs:
 
       - name: Test
         run: dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release --no-build --nologo
+
+      - name: Verify WPF update progress
+        run: dotnet run --project tools/PcSecurityCenter.UiSmoke -c Release -- --update artifacts/update-progress

@@ -121,6 +121,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // 更新状态变化 → 刷新顶部更新横幅（在 UI 线程）
         _updater.StateChanged += (_, _) => Ui.Post(RefreshUpdateBanner);
+        _updater.DownloadProgressChanged += (_, _) => Ui.Post(RefreshUpdateBanner);
 
         // 启动只检查更新，不自动下载或重启；下载和应用必须由用户明确触发。
         _ = StartupUpdateCheckAsync();
@@ -156,7 +157,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             case UpdateState.Downloading when !_updateDeferred:
             {
-                UpdateBannerTitle.Text = "正在下载更新包…";
+                UpdateBannerTitle.Text = $"正在下载更新包… {_updater.DownloadProgressPercent}%";
                 UpdateBannerSub.Text = "请勿关闭应用，下载完成后将提示重启升级。";
                 UpdateNowButton.Visibility = Visibility.Collapsed;
                 UpdateLaterButton.Visibility = Visibility.Visible;

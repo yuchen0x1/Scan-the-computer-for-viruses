@@ -22,8 +22,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1) { Console.Error.WriteLine("Pass a disposable output directory inside this repository."); return 2; }
-        var root = Path.GetFullPath(args[0]);
+        var updateOnly = args.Length == 2 && args[0] == "--update";
+        if (args.Length != 1 && !updateOnly) { Console.Error.WriteLine("Pass [--update] and a disposable output directory inside this repository."); return 2; }
+        var root = Path.GetFullPath(args[updateOnly ? 1 : 0]);
         var repo = Path.GetFullPath(Environment.CurrentDirectory);
         if (!File.Exists(Path.Combine(repo, "PcSecurityCenter.slnx")) ||
             !root.StartsWith(repo + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
@@ -41,6 +42,13 @@ internal static class Program
             {
                 foreach (var resource in new[] { "Palette.Light.xaml", "Controls.xaml" })
                     app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri($"pack://application:,,,/PcSecurityCenter.App;component/Themes/{resource}") });
+                if (updateOnly)
+                {
+                    await UpdateProgressChecks.RunAsync(root);
+                    Check(string.IsNullOrWhiteSpace(bindingLog.ToString()), "no WPF update binding warnings: " + bindingLog);
+                    exit = 0;
+                    return;
+                }
                 var fixture = Path.Combine(root, "fixture");
                 Directory.CreateDirectory(fixture);
                 await File.WriteAllBytesAsync(Path.Combine(fixture, "invoice.pdf.exe"), [0x4d, 0x5a, 0, 0]);

@@ -45,7 +45,7 @@ public sealed class UpdaterService
 
     private readonly HttpClient _http;
     // 下载走独立 HttpClient：大文件流式读取由下方分阶段超时控制，不能被 20s 全局超时掐断。
-    private readonly HttpClient _downloadHttp = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _downloadHttp;
     private readonly string _downloadDir;
     private readonly string _releaseCachePath;
     private readonly SemaphoreSlim _releaseGate = new(1, 1);
@@ -83,14 +83,26 @@ public sealed class UpdaterService
     public event EventHandler? StateChanged;
     public event EventHandler<int>? DownloadProgressChanged;
 
-    public UpdaterService()
+    public UpdaterService() : this(
+        new HttpClient { Timeout = TimeSpan.FromSeconds(20) },
+        new HttpClient { Timeout = Timeout.InfiniteTimeSpan },
+        Path.Combine(Path.GetTempPath(), "PcSecurityCenterUpdates"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PcSecurityCenter", "Cache", "github-releases.json"),
+        typeof(UpdaterService).Assembly.GetName().Version ?? new Version(1, 0, 0, 0))
     {
-        CurrentVersion = typeof(UpdaterService).Assembly.GetName().Version ?? new Version(1, 0, 0, 0);
-        _downloadDir = Path.Combine(Path.GetTempPath(), "PcSecurityCenterUpdates");
-        var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PcSecurityCenter", "Cache");
-        _releaseCachePath = Path.Combine(cacheDir, "github-releases.json");
+    }
+
+    // 验证工具注入受控 HTTP 响应与隔离目录，直接覆盖生产下载/校验链，避免碰用户数据。
+    internal UpdaterService(HttpClient http, HttpClient downloadHttp, string downloadDirectory,
+        string releaseCachePath, Version currentVersion)
+    {
+        CurrentVersion = currentVersion;
+        _downloadDir = downloadDirectory;
+        _releaseCachePath = releaseCachePath;
+        _downloadHttp = downloadHttp;
         LoadReleaseCache();
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _http = http;
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("PcSecurityCenter-App/1.2");
         _http.DefaultRequestHeaders.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
@@ -366,9 +378,11 @@ public sealed class UpdaterService
             return;
         }
 
+        LastError = null;
+        DownloadedPath = null;
+        VerifiedSha256 = null;
+        ReportDownloadProgress(0);
         State = UpdateState.Downloading;
-        DownloadProgressPercent = 0;
-        DownloadProgressChanged?.Invoke(this, 0);
         try
         {
             Directory.CreateDirectory(_downloadDir);
@@ -379,6 +393,7 @@ public sealed class UpdaterService
             {
                 try
                 {
+                    ReportDownloadProgress(0);
                     var (read, sha256) = await DownloadPartAsync(asset, part, cancellationToken);
                     if (asset.Size > 0 && read != asset.Size)
                         throw new InvalidDataException($"下载不完整：期望 {asset.Size} 字节，实际 {read} 字节");
@@ -387,6 +402,7 @@ public sealed class UpdaterService
                     File.Move(part, dest, overwrite: true);
                     DownloadedPath = dest;
                     VerifiedSha256 = sha256;
+                    ReportDownloadProgress(100);
                     State = UpdateState.Ready;
                     last = null;
                     break;
@@ -421,7 +437,7 @@ public sealed class UpdaterService
         using var resp = await _downloadHttp.GetAsync(
             asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, headCts.Token);
         resp.EnsureSuccessStatusCode();
-        var total = resp.Content.Headers.ContentLength ?? asset.Size;
+        var total = resp.Content.Headers.ContentLength is > 0 ? resp.Content.Headers.ContentLength.Value : asset.Size;
 
         await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
         await using var fs = File.Create(part);
@@ -439,12 +455,20 @@ public sealed class UpdaterService
             read += n;
             if (total > 0)
             {
-                DownloadProgressPercent = Math.Min(100, (int)(read * 100 / total));
-                DownloadProgressChanged?.Invoke(this, DownloadProgressPercent);
+                ReportDownloadProgress((int)Math.Min(100, read * 100 / total));
             }
         }
         hasher.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
         return (read, Convert.ToHexString(hasher.Hash!).ToLowerInvariant());
+    }
+
+    private void ReportDownloadProgress(int percent)
+    {
+        percent = Math.Clamp(percent, 0, 100);
+        if (DownloadProgressPercent == percent) return;
+        DownloadProgressPercent = percent;
+        // 每个整数百分比仅派发一次，避免高速下载的大量分块回调淹没 UI 队列。
+        DownloadProgressChanged?.Invoke(this, percent);
     }
 
     /// <summary>

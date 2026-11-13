@@ -6,7 +6,7 @@
         <StackPanel>
             <TextBlock Text="更新中心" Style="{StaticResource PageTitle}" />
             <TextBlock Style="{StaticResource PageSubTitle}"
-                       Text="检测更新与更新日志同一入口 · 启动时尝试在线检查；缓存结果会明确标注，联网确认后自动下载升级" />
+                       Text="检测更新与更新日志同一入口 · 启动时尝试在线检查；下载与安装由你确认" />
 
             <!-- ===== 检测更新 ===== -->
             <Border Style="{StaticResource SectionCard}">

@@ -41,8 +41,8 @@ public partial class UpdateViewModel : ObservableObject
     {
         _updater = updater;
         CurrentVersionText = $"v{_updater.CurrentVersion.ToString(3)}";
-        _updater.StateChanged += (_, _) => ReflectState();
-        _updater.DownloadProgressChanged += (_, p) => DownloadProgress = p;
+        _updater.StateChanged += (_, _) => Ui.Post(ReflectState);
+        _updater.DownloadProgressChanged += (_, _) => Ui.Post(ReflectState);
         ReflectState();
         _ = LoadChangelogAsync();
     }
@@ -50,6 +50,8 @@ public partial class UpdateViewModel : ObservableObject
     private void ReflectState()
     {
         var s = _updater.State;
+        // 页面晚于下载创建时也恢复当前数值；文字与进度条始终取同一快照。
+        DownloadProgress = _updater.DownloadProgressPercent;
         IsBusy = s is UpdateState.Checking or UpdateState.Downloading or UpdateState.Applying;
         IsDownloading = s == UpdateState.Downloading;
         CanCheck = !IsBusy;
