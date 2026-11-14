@@ -394,6 +394,8 @@ public partial class AdvancedToolsViewModel : ObservableObject
     private readonly IPerformanceMonitor _performance;
     private readonly WindowsTasksAndServices _tasksServices;
     private readonly IDialogService _dialogs;
+    private readonly IIconCacheService _iconCache;
+    private readonly MaintenanceRunRepository _repo;
 
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusText = "";
@@ -405,12 +407,50 @@ public partial class AdvancedToolsViewModel : ObservableObject
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = new();
 
     public AdvancedToolsViewModel(INetworkMonitor network, IPerformanceMonitor performance,
-        WindowsTasksAndServices tasksServices, IDialogService dialogs)
+        WindowsTasksAndServices tasksServices, IDialogService dialogs,
+        IIconCacheService iconCache, MaintenanceRunRepository repo)
     {
         _network = network;
         _performance = performance;
         _tasksServices = tasksServices;
         _dialogs = dialogs;
+        _iconCache = iconCache;
+        _repo = repo;
+    }
+
+    /// <summary>重建桌面图标缓存：修复快捷方式白纸图标（关闭 Explorer → 白名单删缓存 → 自动重启）。</summary>
+    [RelayCommand]
+    private async Task RebuildIconCacheAsync()
+    {
+        if (IsBusy) return;
+        var ok = await _dialogs.ConfirmAsync("重建桌面图标缓存",
+            "当桌面/任务栏图标显示异常（如快捷方式全部变成白纸）时，重建图标缓存库可修复。\n\n" +
+            "过程：自动关闭资源管理器（桌面和任务栏会消失几秒）→ 删除图标缓存数据库 → 自动重启资源管理器。\n\n" +
+            "安全说明：仅清理系统图标缓存数据库（白名单限定），不会删除任何个人文件；无需管理员权限。\n\n确认执行？",
+            "开始重建", danger: true);
+        if (!ok) return;
+        IsBusy = true;
+        var startedAt = DateTime.Now;
+        try
+        {
+            var (success, output) = await _iconCache.RebuildAsync();
+            StatusText = success
+                ? "图标缓存重建完成，桌面与任务栏将在几秒内自动恢复，图标随后重新提取。"
+                : "图标缓存重建失败，已尝试恢复资源管理器：" + output;
+            _repo.Insert(new MaintenanceRunRecord
+            {
+                StartedAt = startedAt, FinishedAt = DateTime.Now,
+                Action = "重建图标缓存", Detail = success ? "完成" : "失败：" + output,
+                Success = success,
+            });
+            await _dialogs.InfoAsync(success ? "重建完成" : "重建失败", output);
+        }
+        catch (Exception ex)
+        {
+            StatusText = "图标缓存重建异常：" + ex.Message;
+            Serilog.Log.Error(ex, "重建图标缓存异常");
+        }
+        finally { IsBusy = false; }
     }
 
     [RelayCommand]

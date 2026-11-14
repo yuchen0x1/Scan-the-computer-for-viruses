@@ -90,6 +90,14 @@ public interface IMaintenanceService
     Task<(bool Success, string Output)> CreateRestorePointAsync(string description, CancellationToken ct = default);
 }
 
+/// <summary>桌面图标缓存修复服务：当快捷方式图标显示异常（白纸图标）时重建缓存。</summary>
+public interface IIconCacheService
+{
+    /// <summary>重建图标缓存：安全关闭 Explorer → 白名单删除缓存数据库 → 自动重启 Explorer。
+    /// 只清理图标缓存数据库，绝不触碰任何个人文件。</summary>
+    Task<(bool Success, string Output)> RebuildAsync(CancellationToken ct = default);
+}
+
 /// <summary>文件分析服务。</summary>
 public interface IFileAnalysisService
 {

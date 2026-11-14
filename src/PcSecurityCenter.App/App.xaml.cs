@@ -160,6 +160,7 @@ public partial class App : Application
         services.AddSingleton<WindowsTasksAndServices>();
         services.AddSingleton<IInstalledAppsProvider, WindowsInstalledAppsProvider>();
         services.AddSingleton<IMaintenanceService, WindowsMaintenanceService>();
+        services.AddSingleton<IIconCacheService, IconCacheService>();
         services.AddSingleton<IQuarantineService>(_ => new QuarantineService(AppPaths.QuarantineDir));
         services.AddSingleton<IFileAnalysisService, PlatformFileAnalysisService>();
         services.AddSingleton<IScanRangeBuilder, ScanRangeBuilder>();

@@ -5,7 +5,7 @@
         <StackPanel>
             <TextBlock Text="高级工具" Style="{StaticResource PageTitle}" />
             <TextBlock Style="{StaticResource PageSubTitle}"
-                       Text="只读查看：系统信息 · 环境变量 · 电源模式 · 服务 · 适配器；修改类操作必须确认并记录" />
+                       Text="系统信息 · 环境变量 · 电源模式 · 服务 · 适配器 · 图标缓存修复；修改类操作必须确认并记录" />
 
             <WrapPanel>
                 <Button Content="系统信息" Style="{StaticResource GhostButton}" Command="{Binding LoadSystemInfoCommand}" Margin="0,0,8,8" />
@@ -14,6 +14,7 @@
                 <Button Content="网络适配器" Style="{StaticResource GhostButton}" Command="{Binding LoadAdaptersCommand}" Margin="0,0,8,8" />
                 <Button Content="系统服务" Style="{StaticResource GhostButton}" Command="{Binding LoadServicesCommand}" Margin="0,0,8,8" />
                 <Button Content="隐私设置快捷入口" Style="{StaticResource GhostButton}" Command="{Binding OpenPrivacySettingsCommand}" Margin="0,0,8,8" />
+                <Button Content="重建图标缓存" Style="{StaticResource GhostButton}" Command="{Binding RebuildIconCacheCommand}" Margin="0,0,8,8" />
             </WrapPanel>
 
             <Border Style="{StaticResource SectionCard}">
