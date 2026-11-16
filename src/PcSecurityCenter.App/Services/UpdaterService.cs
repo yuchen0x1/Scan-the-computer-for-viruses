@@ -3,8 +3,11 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using PcSecurityCenter.Core.Update;
+using PcSecurityCenter.Core.Utils;
 using PcSecurityCenter.Platform.Security;
 
 namespace PcSecurityCenter.App.Services;
@@ -101,6 +104,7 @@ public sealed class UpdaterService
         _downloadDir = downloadDirectory;
         _releaseCachePath = releaseCachePath;
         _downloadHttp = downloadHttp;
+        EnsureSecureDownloadDirectory();
         LoadReleaseCache();
         _http = http;
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("PcSecurityCenter-App/1.2");
@@ -353,6 +357,48 @@ public sealed class UpdaterService
         catch (Exception ex) { Serilog.Log.Debug(ex, "更新 Release 缓存写入失败"); }
     }
 
+    /// <summary>
+    /// Creates the update staging directory with a private Windows ACL and rejects
+    /// reparse points. The updater executes a downloaded executable, so allowing an
+    /// unrelated local process to replace files in this directory would defeat the
+    /// package hash check.
+    /// </summary>
+    private void EnsureSecureDownloadDirectory()
+    {
+        Directory.CreateDirectory(_downloadDir);
+        var directory = new DirectoryInfo(Path.GetFullPath(_downloadDir));
+        if (PathSafety.HasReparsePointInPath(directory.FullName))
+            throw new InvalidDataException("更新目录不能是重解析点");
+
+        if (!OperatingSystem.IsWindows()) return;
+
+        using var identity = WindowsIdentity.GetCurrent();
+        var currentUser = identity.User
+            ?? throw new InvalidOperationException("无法确定当前 Windows 用户");
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        security.AddAccessRule(new FileSystemAccessRule(
+            currentUser,
+            FileSystemRights.FullControl,
+            inheritance,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.FullControl,
+            inheritance,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            FileSystemRights.FullControl,
+            inheritance,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        directory.SetAccessControl(security);
+    }
+
     /// <summary>下载安装包到临时目录，并做完整性校验：文件名净化、下载源限定 GitHub 官方主机、
     /// 字节数核对、SHA256 与发布附带校验和比对、Authenticode 签名策略。全部通过后状态变为 Ready。</summary>
     public async Task DownloadAsync(CancellationToken cancellationToken = default)
@@ -385,9 +431,12 @@ public sealed class UpdaterService
         State = UpdateState.Downloading;
         try
         {
-            Directory.CreateDirectory(_downloadDir);
+            EnsureSecureDownloadDirectory();
             var dest = Path.Combine(_downloadDir, fileName);
-            var part = dest + ".part";
+            // Use an unpredictable temporary name and CreateNew below. A fixed, attacker
+            // guessable .part path would allow a local process to plant a reparse point
+            // before the download starts.
+            var part = Path.Combine(_downloadDir, $".{fileName}.{Guid.NewGuid():N}.part");
             Exception? last = null;
             for (var attempt = 1; attempt <= 3; attempt++)
             {
@@ -440,7 +489,13 @@ public sealed class UpdaterService
         var total = resp.Content.Headers.ContentLength is > 0 ? resp.Content.Headers.ContentLength.Value : asset.Size;
 
         await using var src = await resp.Content.ReadAsStreamAsync(cancellationToken);
-        await using var fs = File.Create(part);
+        await using var fs = new FileStream(
+            part,
+            FileMode.CreateNew,
+            FileAccess.Write,
+            FileShare.None,
+            81920,
+            FileOptions.SequentialScan);
         using var hasher = SHA256.Create();
         var buffer = new byte[81920];
         long read = 0;
@@ -517,9 +572,9 @@ public sealed class UpdaterService
     /// 运行前重新比对 SHA256，防止校验后被替换。</summary>
     public void ApplyAndRestart()
     {
-        if (DownloadedPath is null || !File.Exists(DownloadedPath))
+        if (DownloadedPath is null || string.IsNullOrWhiteSpace(VerifiedSha256) || !File.Exists(DownloadedPath))
         {
-            LastError = "更新包尚未下载完成";
+            LastError = "更新包尚未完成完整性校验";
             State = UpdateState.Error;
             return;
         }
@@ -527,9 +582,28 @@ public sealed class UpdaterService
         try
         {
             State = UpdateState.Applying;
+            EnsureSecureDownloadDirectory();
+            var fullDownloadDir = Path.GetFullPath(_downloadDir)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var fullDownloadedPath = Path.GetFullPath(DownloadedPath);
+            if (!fullDownloadedPath.StartsWith(fullDownloadDir, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("更新包路径不在受保护的下载目录内");
+            if ((File.GetAttributes(fullDownloadedPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("更新包路径不能是重解析点");
+
             if (VerifiedSha256 is { } expected)
             {
-                using var fs = File.OpenRead(DownloadedPath);
+                // Keep a read handle open with delete/write sharing denied while hashing and
+                // creating the installer process. This closes the verify-then-replace window
+                // that existed when the hash stream was disposed before Process.Start.
+                using var fs = new FileStream(
+                    fullDownloadedPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    81920,
+                    FileOptions.SequentialScan);
                 var actual = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
                 if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
                 {
@@ -537,11 +611,15 @@ public sealed class UpdaterService
                     State = UpdateState.Error;
                     return;
                 }
+
+                var signature = SignatureVerifier.Verify(fullDownloadedPath, checkRevocation: true);
+                if (signature.IsSigned && !signature.IsValid)
+                    throw new InvalidDataException("安装包数字签名验证失败：" + signature.StatusText);
             }
 
             var psi = new ProcessStartInfo
             {
-                FileName = DownloadedPath,
+                FileName = fullDownloadedPath,
                 // VERYSILENT：无界面；SUPPRESSMSGBOXES：不弹确认框；NORESTART：不重启系统（但会按 [Run] 重启应用）。
                 Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
                 UseShellExecute = true,

@@ -6,6 +6,7 @@
 - `installer/`：Inno Setup 脚本、语言资源、使用说明和法律文本。安装器需要的许可证源文件与生成工具均应保留。
 - `docs/`：当前架构、维护说明及版本历史。一次性的任务进度、审计评分、研究克隆和个人机器截图不纳入源码仓库。
 - `tools/`：可重复使用的维护与验证工具；WPF 验证入口见 [UiSmoke](../tools/PcSecurityCenter.UiSmoke/README.md)。
+- 项目现状与升级记录：根目录的 [PROJECT_AUDIT.md](../PROJECT_AUDIT.md)、[COMPETITOR_ANALYSIS.md](../COMPETITOR_ANALYSIS.md)、[UPGRADE_ROADMAP.md](../UPGRADE_ROADMAP.md) 和 [UPGRADE_REPORT.md](../UPGRADE_REPORT.md)。
 - `publish/`、`artifacts/`、各项目的 `bin/obj`：可重新生成的本地输出，由 Git 忽略。安装包和便携版作为 GitHub Release 资产分发。
 - 应用真实数据位于 `%APPDATA%\PcSecurityCenter`；它们不属于构建产物，清理仓库时不得删除。
 

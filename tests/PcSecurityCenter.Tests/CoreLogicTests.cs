@@ -85,6 +85,29 @@ public class ScoreCalculatorTests
     }
 }
 
+public class PathSafetyReparseTests
+{
+    [Fact]
+    public void HasReparsePointInPath_普通临时路径_允许验证()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "psc_path_safety_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var missingLeaf = Path.Combine(root, "not-created.bin");
+            Assert.False(PathSafety.HasReparsePointInPath(missingLeaf));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void HasReparsePointInPath_非法路径_按不安全处理()
+        => Assert.True(PathSafety.HasReparsePointInPath("bad\0path"));
+}
+
 /// <summary>扫描范围构建：范围必须真实可解释。</summary>
 public class ScanRangeBuilderTests
 {

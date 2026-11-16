@@ -166,7 +166,6 @@ public partial class App : Application
         services.AddSingleton<IScanRangeBuilder, ScanRangeBuilder>();
         services.AddSingleton<IScanEngine, SmartRiskEngine>();
         services.AddSingleton<IScanOrchestrator, ScanOrchestrator>();
-        services.AddSingleton<WindowsTasksAndServices>();
 
         // 应用服务
         services.AddSingleton<ISecurityEventService, SecurityEventBus>();

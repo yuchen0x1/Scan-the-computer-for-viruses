@@ -358,6 +358,18 @@ public class QuarantineService : IQuarantineService
                 ? Path.Combine(targetDir, rec.Entry.FileName)
                 : rec.Entry.OriginalPath;
 
+            var targetParent = Path.GetDirectoryName(targetPath);
+            if (string.IsNullOrWhiteSpace(targetParent) || PathSafety.HasReparsePointInPath(targetParent))
+            {
+                Serilog.Log.Warning("隔离恢复目标目录包含重解析点或无法验证：{Path}，拒绝恢复", targetParent ?? targetPath);
+                return false;
+            }
+            if (PathSafety.HasReparsePointInPath(targetPath))
+            {
+                Serilog.Log.Warning("隔离恢复目标文件包含重解析点：{Path}，拒绝恢复", targetPath);
+                return false;
+            }
+
             if (File.Exists(targetPath))
                 targetPath += $".restored_{DateTime.Now:yyyyMMddHHmmss}";
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);

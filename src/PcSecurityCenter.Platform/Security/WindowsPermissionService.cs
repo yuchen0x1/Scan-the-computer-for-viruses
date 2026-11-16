@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
 using PcSecurityCenter.Core.Abstractions;
+using PcSecurityCenter.Core.Utils;
 using PcSecurityCenter.Platform.PowerShell;
 
 namespace PcSecurityCenter.Platform.Security;
@@ -58,7 +60,16 @@ public class WindowsPermissionService : IPermissionService
             }
         }
 
-        var resultPath = Path.Combine(Path.GetTempPath(), $"psc_elev_{Guid.NewGuid():N}.json");
+        string resultPath;
+        try
+        {
+            resultPath = CreateSecureResultPath();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "无法创建受保护的提权结果文件");
+            return (false, "无法创建受保护的提权结果文件：" + ex.Message);
+        }
         // 结果文件路径同样按单引号字面量转义，避免临时目录含特殊字符时脚本语法错误。
         var wrapper = header + $$"""
 $__resultPath = '{{EscapePsSingleQuoted(resultPath)}}'
@@ -73,6 +84,7 @@ try {
     } else {
 {{script}}
     }
+
 } catch {
     $__ok = $false
     $__out = $_.Exception.Message
@@ -132,6 +144,47 @@ if ($__ok) { exit 0 } else { exit 1 }
         {
             try { if (File.Exists(resultPath)) File.Delete(resultPath); } catch (Exception) { }
         }
+    }
+
+    /// <summary>
+    /// Creates the administrator result hand-off file below a per-user application
+    /// directory instead of the shared Windows temp directory. The elevated child
+    /// needs access, so SYSTEM and Administrators are allowed alongside the caller;
+    /// inherited access from other local users is removed.
+    /// </summary>
+    private static string CreateSecureResultPath()
+    {
+        var directoryPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PcSecurityCenter", "Elevation");
+        Directory.CreateDirectory(directoryPath);
+        var directory = new DirectoryInfo(Path.GetFullPath(directoryPath));
+        if (PathSafety.HasReparsePointInPath(directory.FullName))
+            throw new InvalidDataException("提权结果目录不能是重解析点");
+
+        if (OperatingSystem.IsWindows())
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var currentUser = identity.User
+                ?? throw new InvalidOperationException("无法确定当前 Windows 用户");
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            var inheritance = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            security.AddAccessRule(new FileSystemAccessRule(
+                currentUser, FileSystemRights.FullControl, inheritance,
+                PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl,
+                inheritance, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl,
+                inheritance, PropagationFlags.None, AccessControlType.Allow));
+            directory.SetAccessControl(security);
+        }
+
+        var resultPath = Path.Combine(directory.FullName, $"psc_elev_{Guid.NewGuid():N}.json");
+        using (new FileStream(resultPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) { }
+        return resultPath;
     }
 
     /// <summary>读取子进程写回的结果文件；缺失或格式异常一律按失败处理。</summary>

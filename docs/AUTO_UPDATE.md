@@ -9,7 +9,7 @@ PcSecurityCenter 使用自有的轻量更新器，继续沿用现有 Inno Setup 
 3. GitHub Releases REST API（兼容兜底，带 ETag）。
 4. 本地缓存（明确显示“不是实时检查结果”，不会允许直接下载）。
 
-下载与安装保持用户确认：只允许 HTTPS 的 `github.com` / `*.githubusercontent.com`，流式下载显示真实进度，失败最多重试 3 次，下载后验证字节数、SHA-256、发布清单/`SHA256SUMS.txt`，并再次校验后才启动 Inno Setup。失败时保留当前版本可用。
+下载与安装保持用户确认：只允许 HTTPS 的 `github.com` / `*.githubusercontent.com`，流式下载显示真实进度，失败最多重试 3 次，下载后验证字节数、SHA-256、发布清单/`SHA256SUMS.txt`，并再次校验后才启动 Inno Setup。更新暂存目录拒绝重解析点，并在 Windows 上限制为当前用户、SYSTEM 和 Administrators；哈希到启动期间保持禁止写入/删除的文件句柄，降低校验后替换风险。失败时保留当前版本可用。
 
 ## 方案调研与选择
 
@@ -43,7 +43,7 @@ git push origin v1.2.3
 
 ## 安全状态与限制
 
-- HTTPS、可信主机、路径穿越防护、文件大小、SHA-256、Authenticode 验证和安装前二次哈希校验已实现。
+- HTTPS、可信主机、路径穿越防护、文件大小、受保护暂存目录、SHA-256、Authenticode 验证和安装前二次哈希校验已实现。
 - 当前仓库没有代码签名证书，公开 Release 安装包仍可能显示 Windows SmartScreen 警告；这项能力标记为 **BLOCKED**，不能宣称已完成签名发布。
 - 没有把 GitHub Token 嵌入客户端。匿名 REST API 受限时，静态清单和 Atom feed 仍可工作。
 - 真实 Release 下载、安装和重启需要在具备网络、管理员权限和匹配 Windows 版本的测试机上验证；本地单元测试不能替代该外部验收。

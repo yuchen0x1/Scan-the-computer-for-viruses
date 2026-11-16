@@ -41,6 +41,38 @@ public static class PathSafety
         }
     }
 
+    /// <summary>
+    /// Returns true when an existing component of a path is a reparse point.
+    /// Missing leaf components are allowed, but any I/O or permission failure is
+    /// treated as unsafe so callers do not write through an unverified directory.
+    /// </summary>
+    public static bool HasReparsePointInPath(string path)
+    {
+        var full = NormalizeAbsolute(path);
+        if (full == null) return true;
+
+        var current = full;
+        while (!string.IsNullOrEmpty(current))
+        {
+            try
+            {
+                var attrs = File.GetAttributes(current);
+                if (attrs.HasFlag(FileAttributes.ReparsePoint)) return true;
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            catch (ArgumentException) { return true; }
+            catch (UnauthorizedAccessException) { return true; }
+            catch (IOException) { return true; }
+
+            var parent = Path.GetDirectoryName(current);
+            if (string.IsNullOrEmpty(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
+                break;
+            current = parent;
+        }
+        return false;
+    }
+
     private static readonly string[] WindowsCriticalRoots = BuildCriticalRoots();
 
     private static string[] BuildCriticalRoots()

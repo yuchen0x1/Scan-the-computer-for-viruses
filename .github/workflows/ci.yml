@@ -24,6 +24,10 @@ jobs:
         shell: pwsh
         run: ./tools/Sync-ReleaseNotes.ps1 -Check
 
+      - name: Check release metadata
+        shell: pwsh
+        run: ./tools/Validate-ReleaseMetadata.ps1
+
       - name: Test
         run: dotnet test tests/PcSecurityCenter.Tests/PcSecurityCenter.Tests.csproj -c Release --no-build --nologo
 
