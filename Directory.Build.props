@@ -8,7 +8,7 @@
     <Product>Windows 智能安全卫士</Product>
     <Company>PC Security Center</Company>
     <Copyright>Copyright © 2026 PC Security Center</Copyright>
-    <SatelliteResourceLanguages>zh-CN</SatelliteResourceLanguages>
+    <SatelliteResourceLanguages>zh-CN;en-US</SatelliteResourceLanguages>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
   </PropertyGroup>
 </Project>

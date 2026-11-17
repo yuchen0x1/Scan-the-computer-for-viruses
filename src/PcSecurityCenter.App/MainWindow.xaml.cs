@@ -29,6 +29,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _allowExit;
     private bool _trayHintShown;
     private bool _updateDeferred;
+    private bool _suppressLocaleChange;
     private readonly List<(string title, string msg, ThreatSeverity sev, DateTime time)> _notifications2 = new();
 
     public string GlobalStatusText { get; set; } = "评估中…";
@@ -42,6 +43,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public MainWindow()
     {
+        LocalizationService.Initialize();
         // 服务必须在 InitializeComponent 之前获取：XAML 中 IsChecked="True" 会在加载期间触发 Checked 事件
         _navigation = App.Services.GetRequiredService<NavigationService>();
         _dialogs = App.Services.GetRequiredService<IDialogService>();
@@ -54,6 +56,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         InitializeComponent();
         DataContext = this;
+        ApplyLocale();
+        _suppressLocaleChange = true;
+        LocaleSelector.SelectedItem = LocaleSelector.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), LocalizationService.Setting, StringComparison.Ordinal))
+            ?? LocaleSelector.Items.OfType<ComboBoxItem>().First();
+        _suppressLocaleChange = false;
         ElevationHint = _permission.ElevationHint;
 
         _trayMenu = new System.Windows.Forms.ContextMenuStrip();
@@ -125,6 +134,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // 启动只检查更新，不自动下载或重启；下载和应用必须由用户明确触发。
         _ = StartupUpdateCheckAsync();
+    }
+
+    private void LocaleSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressLocaleChange || LocaleSelector.SelectedItem is not ComboBoxItem item) return;
+        LocalizationService.SetSetting(item.Tag?.ToString());
+        ApplyLocale();
+    }
+
+    private void ApplyLocale()
+    {
+        Title = LocalizationService.Get("AppTitle");
+        AppTitleText.Text = LocalizationService.Get("AppTitle");
+        NavDashboardText.Text = LocalizationService.Get("Dashboard");
+        NavScanText.Text = LocalizationService.Get("Scan");
+        NavProtectionText.Text = LocalizationService.Get("Protection");
+        NavNetworkText.Text = LocalizationService.Get("Network");
+        NavSystemSecurityText.Text = LocalizationService.Get("SystemSecurity");
+        NavPerformanceText.Text = LocalizationService.Get("Performance");
+        NavMaintenanceText.Text = LocalizationService.Get("Maintenance");
+        NavStartupText.Text = LocalizationService.Get("Startup");
+        NavSoftwareText.Text = LocalizationService.Get("Software");
+        NavAdvancedText.Text = LocalizationService.Get("Advanced");
+        NavFileAnalysisText.Text = LocalizationService.Get("FileAnalysis");
+        NavReportsText.Text = LocalizationService.Get("Reports");
+        NavSettingsText.Text = LocalizationService.Get("Settings");
+        NavUpdateText.Text = LocalizationService.Get("Update");
+        if (_trayIcon != null)
+        {
+            _trayIcon.Text = LocalizationService.Get("AppTitle");
+            if (_trayMenu?.Items.Count > 0) _trayMenu.Items[0].Text = LocalizationService.Get("AppTitle");
+        }
     }
 
     private async Task StartupUpdateCheckAsync()
