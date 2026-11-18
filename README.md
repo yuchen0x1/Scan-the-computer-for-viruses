@@ -100,8 +100,11 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 ## 安装、更新与发布
 
 ### 安装包
-- 标准 Windows 安装程序（`PcSecurityCenter-Setup-1.2.8.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
-- 免安装便携版：`PcSecurityCenter-Portable-1.2.8.zip`，解压即用。
+
+从[最新发行页](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/latest) 的 Assets 选择适用文件。
+
+- 标准 Windows 安装程序（文件名为 `PcSecurityCenter-Setup-<版本>.exe`，基于 Inno Setup 6）：支持安装目录选择、桌面快捷方式、卸载程序与「控制面板-程序和功能」条目。安装过程不关闭系统防护、不设置隐蔽开机自启、不注册计划任务。
+- 免安装便携版：`PcSecurityCenter-Portable-<版本>.zip`，解压即用。
 - 安装包与便携版均为**自包含部署**（.NET 10 运行时已内嵌），无需额外安装 .NET Desktop Runtime。
 - 自 1.2.0 起要求 **Windows 10 2004 (build 19041) 及以上**（x64）；Windows 10 1809/1909 不再支持。
 - 每个 Release 附带 `SHA256SUMS.txt`，可自行校验下载产物完整性。
@@ -122,7 +125,7 @@ dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained t
 # 一键发布（推荐）：自动构建、测试、发布、打包、生成安装包与 SHA256SUMS
 # 需 PowerShell 7（pwsh）；版本号统一由 Directory.Build.props 注入
 pwsh publish.ps1
-# 或手动：
+# 以下为 v1.2.8 的手动构建示例，其他版本请使用对应版本号及发行说明。
 # 1) 自包含发布
 dotnet publish src/PcSecurityCenter.App -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish/selfcontained
 # 2) 便携版 zip
