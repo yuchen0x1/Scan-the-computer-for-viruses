@@ -1,0 +1,99 @@
+name: Sync release to README
+on:
+  release:
+    types: [published, edited, released, unpublished, deleted]
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  # Catch releases published by another workflow using GITHUB_TOKEN and missed events.
+  schedule:
+    - cron: '24 3 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-release-readme
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'workflow_call'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Update the release section on the default branch
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          retries: 3
+          script: |
+            const { owner, repo } = context.repo
+            const branch = context.payload.repository.default_branch
+            const start = '<!-- github-release:start -->'
+            const end = '<!-- github-release:end -->'
+            const releases = 'https://github.com/' + owner + '/' + repo + '/releases'
+
+            function plain(text) {
+              return text.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+                .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+                .replace(/(\*\*|__|\x60)/g, '').replace(/\s+/g, ' ').trim()
+            }
+
+            function escapeMarkdown(text) {
+              return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/[\\*_[\]\x60#|!~]/g, '\\$&')
+            }
+
+            function summary(body) {
+              const lines = (body || '').replace(/\r/g, '').split('\n')
+              const index = lines.findIndex(line => /^#{1,4} .*(版本概述|Release overview|Summary)\s*$/i.test(line))
+              const following = index < 0 ? [] : lines.slice(index + 1)
+              while (following.length && !following[0].trim()) following.shift()
+              const paragraph = []
+              for (const line of following) {
+                if (!line.trim() || /^[#|]|^\s*(?:---|\x60\x60\x60)/.test(line)) break
+                paragraph.push(line.trim())
+              }
+              const fallback = lines.find(line => /^[-*>] \S/.test(line) && !/^[-*>] [![]/.test(line))
+              const excerpt = plain(paragraph.join(' ') || (fallback || '').replace(/^[-*>] /, ''))
+              if (!excerpt) return ''
+              const chars = Array.from(excerpt)
+              return escapeMarkdown(chars.length > 330 ? chars.slice(0, 327).join('') + '…' : excerpt)
+            }
+
+            let latest
+            try {
+              latest = (await github.rest.repos.getLatestRelease({ owner, repo })).data
+            } catch (error) {
+              if (error.status !== 404) throw error
+            }
+            const path = 'README.md'
+            const file = (await github.rest.repos.getContent({ owner, repo, path, ref: branch })).data
+            const before = Buffer.from(file.content, 'base64').toString('utf8')
+            const first = before.indexOf(start)
+            const last = before.indexOf(end)
+            if (first < 0 || last < first || first !== before.lastIndexOf(start) || last !== before.lastIndexOf(end)) {
+              throw new Error('Expected one github-release marker pair in README.md')
+            }
+            const english = /^## Latest release\s*$/im.test(before)
+            const history = english ? 'Release history' : '全部发行记录'
+            let lines = ['[' + history + '](' + releases + ')']
+            if (latest) {
+              const label = escapeMarkdown(latest.tag_name)
+              const url = releases + '/tag/' + encodeURIComponent(latest.tag_name)
+              lines.unshift('**[' + label + '](' + url + ')** · ' + latest.published_at.slice(0, 10))
+              const overview = summary(latest.body)
+              if (overview) lines.splice(1, 0, overview)
+            } else {
+              lines.unshift(english ? 'No published stable release.' : '尚无已发布的正式版本。')
+            }
+            const nl = before.includes('\r\n') ? '\r\n' : '\n'
+            const after = before.slice(0, first + start.length) + nl + nl + lines.join(nl + nl) + nl + nl + before.slice(last)
+            if (after !== before) {
+              await github.rest.repos.createOrUpdateFileContents({
+                owner, repo, branch, path, sha: file.sha,
+                message: 'docs: sync README with GitHub Releases',
+                content: Buffer.from(after).toString('base64')
+              })
+            }

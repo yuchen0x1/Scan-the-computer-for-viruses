@@ -13,16 +13,17 @@
 
 ## 最新更新
 
-### v1.2.8（2026-11-17）
+<!-- github-release:start -->
 
-- WPF 应用启动时按 Windows UI 语言自动选择中文或 English，也可在标题栏手动切换并保存。
-- 导航、窗口标题和托盘入口会即时更新；扫描结果、威胁名称和安全报告数据保持原样。
+**[v1.2.8](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/tag/v1.2.8)** · 2026-11-17
 
-### v1.2.7（2026-11-16）
+本版为 WPF 应用壳层新增中文/English 自动语言选择、手动切换和持久化设置。导航、窗口标题和托盘入口即时更新；扫描、威胁、报告与历史数据保持原样。本版不重写扫描引擎、更新校验或隔离区逻辑。
 
-本版收紧更新安装、提权回传和隔离恢复的文件边界，降低校验后替换、共享临时目录和重解析点带来的风险；同时补齐发布元数据校验、项目审计与升级路线图。下载与安装仍由用户确认。
+[全部发行记录](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases)
 
-安装包与便携版见 [v1.2.8 发布页](https://github.com/yuchen0x1/Scan-the-computer-for-viruses/releases/tag/v1.2.8)。各版本变化、验证范围与限制见 [完整发布历史](docs/releases/release-notes.md)。
+<!-- github-release:end -->
+
+[完整更新日志](docs/releases/release-notes.md)
 
 ---
 
