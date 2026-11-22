@@ -41,7 +41,9 @@ $iss = Read-Text 'installer/PcSecurityCenter.iss'
 Assert-Match 'Inno Setup fallback' $iss ('#define\s+AppVersion\s+"' + [regex]::Escape($version) + '"')
 
 $readme = Read-Text 'README.md'
-Assert-Match 'README current heading' $readme ("(?m)^###\s+v$([regex]::Escape($version))\s*[（(]")
+# README 当前版本由 Sync release to README 工作流维护在 github-release 标记区块内，
+# 校验该区块中的最新版本链接即可确认与 Directory.Build.props 一致。
+Assert-Match 'README current release marker' $readme ("(?s)<!-- github-release:start -->.*?\*\*\[v$([regex]::Escape($version))\]")
 Assert-Match 'README release link' $readme ("releases/tag/v$([regex]::Escape($version))")
 Assert-Match 'README setup artifact' $readme ("PcSecurityCenter-Setup-$([regex]::Escape($version))\.exe")
 Assert-Match 'README portable artifact' $readme ("PcSecurityCenter-Portable-$([regex]::Escape($version))\.zip")
